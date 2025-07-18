@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Upload, RotateCcw, ImageIcon, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import  {mapCircles} from "@/data/map-circles"
 
 interface Circle {
   x: number
@@ -42,13 +43,10 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
 
   // Property circles data
   const [circles, setCircles] = useState<Circle[]>([
-    { x: 300, y: 200, r: 20, status: "available", id: "A01" },
-    { x: 300, y: 300, r: 20, status: "available", id: "A02" },
-    { x: 300, y: 400, r: 20, status: "available", id: "A03" },
-    { x: 300, y: 500, r: 20, status: "available", id: "A04" },
-    { x: 300, y: 600, r: 20, status: "available", id: "A05" },
-    { x: 300, y: 700, r: 20, status: "available", id: "A06" },
   ])
+  useEffect(() => {
+    setCircles(mapCircles)
+  }, [])
 
   // Status colors
   const statusColors = {
