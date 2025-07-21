@@ -1,24 +1,18 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Calendar, MapPin, Info, Menu, X, Upload } from "lucide-react"
+import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import CanvasMap from "@/components/canvas-map"
+import CanvasMap, { Circle } from "@/components/canvas-map"
 import { useToast } from "@/hooks/use-toast"
-
-interface Circle {
-  x: number
-  y: number
-  r: number
-  status: "available" | "booked" | "pending"
-  id: string
-}
+import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
+import ConnectionGuard from "@/components/connection-guard"
 
 interface Property {
   id: string
@@ -33,6 +27,8 @@ interface BookingDetail {
 }
 
 export default function PropertyLayout() {
+  const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
+
   const [activeTab, setActiveTab] = useState("monthly")
   const [selectedMonth, setSelectedMonth] = useState("6")
   const [selectedYear, setSelectedYear] = useState("2025")
@@ -41,6 +37,7 @@ export default function PropertyLayout() {
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [showPropertyList, setShowPropertyList] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState<Circle | null>(null)
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<string>>(new Set())
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [mapFilterMode, setMapFilterMode] = useState<"day" | "month">("month")
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
@@ -49,6 +46,9 @@ export default function PropertyLayout() {
   // Mock property data for the selected area
   const [propertyList, setPropertyList] = useState<Property[]>([])
   const [bookingData, setBookingData] = useState<Property[]>([])
+  
+  // Ref for external circle update handler
+  const externalCircleUpdateRef = useRef<((circle: Circle) => void) | null>(null)
 
   // Calendar highlighted days (booking days)
   // const highlightedDays = [11, 12, 13, 14, 18, 19, 20, 21, 25, 26, 27, 28]
@@ -216,6 +216,13 @@ export default function PropertyLayout() {
   }, [generateBookingDetails])
 
   const handlePropertyClick = (property: Circle) => {
+    // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
+    if (selectedPropertyIds.has(property.id)) {
+      // ถ้าถูกเลือกแล้ว ให้ยกเลิกการเลือก
+      handleRemoveProperty(property.id)
+      return
+    }
+
     setSelectedProperty(property)
 
     // เพิ่มรายการเข้าไปใน propertyList ถ้ายังไม่มี
@@ -232,12 +239,63 @@ export default function PropertyLayout() {
       return prevList
     })
 
+    // เพิ่ม ID เข้าไปใน selectedPropertyIds
+    setSelectedPropertyIds(prev => new Set([...prev, property.id]))
+
+    onSelectBooking(property)
+
     setShowPropertyList(true)
     setShowDetailPanel(false)
   }
 
   const handleRemoveProperty = (propertyId: string) => {
-    setPropertyList((prevList) => prevList.filter((item) => item.id !== propertyId))
+    // ลบจาก propertyList และตรวจสอบว่าต้องซ่อน Property List หรือไม่
+    setPropertyList((prevList) => {
+      const filteredList = prevList.filter((item) => item.id !== propertyId)
+      if (filteredList.length === 0) {
+        setShowPropertyList(false)
+      }
+      return filteredList
+    })
+    
+    // ลบจาก selectedPropertyIds เพื่อให้สามารถคลิกได้อีก
+    setSelectedPropertyIds(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(propertyId)
+      return newSet
+    })
+    
+    // ส่งสัญญาณไปยัง Canvas Map เพื่อยกเลิกการจองโดยตรง
+    // หาจุดจาก selectedProperty หรือใช้ค่า default
+    const existingProperty = selectedProperty && selectedProperty.id === propertyId ? selectedProperty : {
+      id: propertyId,
+      x: 100, // ค่า default ถ้าไม่มีข้อมูลจริง
+      y: 100,
+      r: 20,
+      status: 'available' as const,
+      bookedBy: undefined,
+      bookedAt: undefined
+    }
+    
+    const cancelledProperty: Circle = {
+      ...existingProperty,
+      status: 'available',
+      bookedBy: undefined,
+      bookedAt: undefined
+    }
+    
+    console.log('🗑️ Creating cancelled property:', cancelledProperty);
+    
+    // อัปเดต Canvas Map โดยตรงผ่าน external update handler
+    // (การเรียก broadcastCircleUpdate จะทำใน external handler แล้ว)
+    if (externalCircleUpdateRef.current) {
+      externalCircleUpdateRef.current(cancelledProperty)
+    }
+    
+    toast({
+      title: "ยกเลิกการเลือก",
+      description: `ยกเลิกการเลือกจุด ${propertyId} แล้ว`,
+    })
   }
 
   const handleViewDetails = () => {
@@ -341,7 +399,14 @@ export default function PropertyLayout() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <ConnectionGuard
+      isLoading={isLoading}
+      isConnected={isConnected}
+      connectionError={connectionError}
+      retryCount={retryCount}
+      maxRetries={maxRetries}
+    >
+      <div className="flex flex-col lg:flex-row h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Left Sidebar */}
       <div className="w-full lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-gray-200 shadow-lg lg:shadow-lg">
         <div className="p-4 lg:p-6 space-y-6">
@@ -608,6 +673,8 @@ export default function PropertyLayout() {
                 onCircleClick={handlePropertyClick}
                 onImageUpload={handleImageUpload}
                 onFilterChange={handleMapFilterChange}
+                selectedPropertyIds={selectedPropertyIds}
+                onExternalCircleUpdate={externalCircleUpdateRef}
               />
             </div>
           </div>
@@ -638,6 +705,14 @@ export default function PropertyLayout() {
                     <div>
                       <span className="text-sm font-medium text-gray-800">ว่าง</span>
                       <p className="text-xs text-gray-500">Available</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors">
+                    <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-blue-600 shadow-sm"></div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-800">เลือกแล้ว</span>
+                      <p className="text-xs text-gray-500">Selected</p>
                     </div>
                   </div>
 
@@ -685,7 +760,12 @@ export default function PropertyLayout() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowPropertyList(false)}
+                  onClick={() => {
+                    setShowPropertyList(false)
+                    // ล้างการเลือกทั้งหมดเมื่อปิด Property List
+                    setPropertyList([])
+                    setSelectedPropertyIds(new Set())
+                  }}
                   className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
                 >
                   <X className="w-4 h-4" />
@@ -698,6 +778,7 @@ export default function PropertyLayout() {
                     <div className="text-center py-8 text-gray-500">
                       <p className="text-sm">ยังไม่มีรายการ</p>
                       <p className="text-xs">คลิกจุดบนแผนที่เพื่อเพิ่มรายการ</p>
+                      <p className="text-xs mt-1 text-gray-400">คลิกซ้ำเพื่อยกเลิกการเลือก</p>
                     </div>
                   ) : (
                     propertyList.map((property) => (
@@ -1085,6 +1166,7 @@ export default function PropertyLayout() {
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </ConnectionGuard>
   )
 }

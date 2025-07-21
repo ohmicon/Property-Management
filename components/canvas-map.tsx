@@ -1,28 +1,33 @@
 "use client"
 
-import type React from "react"
-
-import { useEffect, useRef, useState, useCallback } from "react"
+import React, { useRef, useEffect, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Upload, RotateCcw, ImageIcon, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { getCircles, updateCircleStatus } from "@/lib/api/circles"
+import { getOrCreateUsername, getCurrentUsername } from "@/lib/user-utils"
+import { toast } from "sonner"
+import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 
-interface Circle {
+export interface Circle {
   x: number
   y: number
   r: number
   status: "available" | "booked" | "pending"
   id: string
+  bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
+  bookedAt?: number // Timestamp ของการจอง
 }
 
 interface CanvasMapProps {
   onCircleClick?: (circle: Circle) => void
   onImageUpload?: (imageUrl: string) => void
   onFilterChange?: (mode: "day" | "month") => void
+  selectedPropertyIds?: Set<string>
+  onExternalCircleUpdate?: React.MutableRefObject<((circle: Circle) => void) | null> // ใช้ ref สำหรับ external update
 }
 
-export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange }: CanvasMapProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange, selectedPropertyIds, onExternalCircleUpdate }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
   const [isImageLoaded, setIsImageLoaded] = useState(false)
@@ -30,32 +35,324 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
   const [showUploadArea, setShowUploadArea] = useState(false)
   const [showInstructions, setShowInstructions] = useState(true)
   const [filterMode, setFilterMode] = useState<"day" | "month">("month")
+  
+  // Real-time booking hook
+  const { socket, isConnected, isLoading, broadcastCircleUpdate } = useRealtimeBooking()
+  
+  // Track active bookings count
+  const [activeBookingsCount, setActiveBookingsCount] = useState(0)
 
   // Map state
   const offsetRef = useRef({ x: 0, y: 0 })
   const scaleRef = useRef(1)
   const isDraggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const lastTouchDistRef = useRef<number | null>(null)
   const lastTouchMidRef = useRef<{ x: number; y: number } | null>(null)
   const isTouchPanningRef = useRef(false)
 
   // Property circles data
-  const [circles, setCircles] = useState<Circle[]>([
-    { x: 300, y: 200, r: 20, status: "available", id: "A01" },
-    { x: 300, y: 300, r: 20, status: "available", id: "A02" },
-    { x: 300, y: 400, r: 20, status: "available", id: "A03" },
-    { x: 300, y: 500, r: 20, status: "available", id: "A04" },
-    { x: 300, y: 600, r: 20, status: "available", id: "A05" },
-    { x: 300, y: 700, r: 20, status: "available", id: "A06" },
-  ])
+  const [circles, setCircles] = useState<Circle[]>([])
+  const [isLoadingCircles, setIsLoadingCircles] = useState(true)
+  const [hasReceivedSocketData, setHasReceivedSocketData] = useState(false)
+  
+  // User info
+  const [currentUsername, setCurrentUsername] = useState<string>('')
 
-  // Status colors
-  const statusColors = {
-    available: "rgba(0, 200, 0, 0.7)",
-    booked: "rgba(200, 0, 0, 0.7)",
-    pending: "rgba(255, 165, 0, 0.7)",
+  // Status colors - different styles for own vs others' bookings
+  const getCircleStyle = (circle: Circle) => {
+    // Check if this circle is selected in Property List
+    const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
+    
+    if (circle.status === 'available') {
+      if (isSelectedInList) {
+        // Selected in Property List - blue highlight
+        return {
+          fillColor: "rgba(59, 130, 246, 0.8)",
+          strokeColor: "rgba(37, 99, 235, 1)",
+          strokeWidth: 3,
+          cursor: 'pointer',
+          isSelected: true
+        }
+      } else {
+        return {
+          fillColor: "rgba(0, 200, 0, 0.7)",
+          strokeColor: "rgba(0, 150, 0, 1)",
+          strokeWidth: 2,
+          cursor: 'pointer'
+        }
+      }
+    } else if (circle.status === 'pending') {
+      const isOwnBooking = circle.bookedBy === currentUsername
+      if (isOwnBooking) {
+        // Own booking - bright orange with thick border
+        return {
+          fillColor: "rgba(255, 165, 0, 0.8)",
+          strokeColor: "rgba(255, 140, 0, 1)",
+          strokeWidth: 4,
+          cursor: 'pointer'
+        }
+      } else {
+        // Others' booking - darker orange with dashed border
+        return {
+          fillColor: "rgba(200, 100, 0, 0.6)",
+          strokeColor: "rgba(150, 80, 0, 1)",
+          strokeWidth: 2,
+          cursor: 'not-allowed',
+          isDashed: true
+        }
+      }
+    } else {
+      // booked status
+      return {
+        fillColor: "rgba(200, 0, 0, 0.7)",
+        strokeColor: "rgba(150, 0, 0, 1)",
+        strokeWidth: 2,
+        cursor: 'default'
+      }
+    }
   }
+
+  // Initialize username and load circles
+  useEffect(() => {
+    // Get or create username
+    const username = getOrCreateUsername()
+    setCurrentUsername(username)
+    
+    const loadCircles = async () => {
+      try {
+        setIsLoadingCircles(true)
+        const circlesData = await getCircles()
+        
+        // If we haven't received socket data yet, reset all to available
+        // If we have received socket data, preserve current booking states
+        if (!hasReceivedSocketData) {
+          const resetCircles = circlesData.map(circle => ({
+            ...circle,
+            status: 'available' as const,
+            bookedBy: undefined,
+            bookedAt: undefined
+          }))
+          setCircles(resetCircles)
+          console.log('✅ Loaded and reset circles (no socket data yet):', resetCircles.length)
+        } else {
+          // Merge with existing booking states
+          setCircles(prevCircles => {
+            const mergedCircles = circlesData.map(dbCircle => {
+              const existingCircle = prevCircles.find(c => c.id === dbCircle.id)
+              if (existingCircle && existingCircle.status === 'pending') {
+                // Preserve booking state from socket
+                return existingCircle
+              }
+              // Use DB data but reset booking state
+              return {
+                ...dbCircle,
+                status: 'available' as const,
+                bookedBy: undefined,
+                bookedAt: undefined
+              }
+            })
+            console.log('✅ Loaded circles and preserved socket booking states:', mergedCircles.length)
+            return mergedCircles
+          })
+        }
+        
+        console.log('👤 Current user:', username)
+      } catch (error) {
+        console.error('❌ Failed to load circles:', error)
+        toast.error('ไม่สามารถโหลดข้อมูลจุดจองได้')
+      } finally {
+        setIsLoadingCircles(false)
+      }
+    }
+
+    loadCircles()
+  }, [hasReceivedSocketData])
+
+  // Listen for real-time circle updates from other clients
+  useEffect(() => {
+    if (!socket || !isConnected) return
+
+    const handleCircleUpdate = (updatedCircle: Circle) => {
+      console.log('📡 Received real-time circle update:', updatedCircle)
+      
+      // Update local state only - DO NOT broadcast again
+      setCircles(prevCircles => {
+        const newCircles = prevCircles.map(circle => 
+          circle.id === updatedCircle.id ? updatedCircle : circle
+        )
+        // Update active bookings count
+        const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+        setActiveBookingsCount(newActiveCount)
+        console.log(`🔄 Updated active bookings count: ${newActiveCount}`);
+        return newCircles
+      })
+      
+      const statusText = updatedCircle.status === 'available' ? 'ว่าง' : 
+                        updatedCircle.status === 'pending' ? `ถูกจองโดย ${updatedCircle.bookedBy}` : 'ขายแล้ว'
+      toast.info(`🔄 ${updatedCircle.id} เปลี่ยนเป็น ${statusText}`)
+    }
+
+    // Add socket listener for real-time updates
+    socket.on('circleUpdated', handleCircleUpdate)
+    console.log('🔌 Listening for real-time circle updates...')
+    
+    return () => {
+      // Remove socket listener on cleanup
+      socket.off('circleUpdated', handleCircleUpdate)
+      console.log('📋 Stopped listening for circle updates')
+    }
+  }, [socket, isConnected])
+
+  // Listen for temporary bookings state from server (for new clients)
+  useEffect(() => {
+    const handleTemporaryBookingsReceived = (event: CustomEvent) => {
+      const bookings = event.detail as Array<{ circleId: string; bookedBy: string; bookedAt: number }>
+      console.log('📦 Processing current booking state from server:', bookings)
+      
+      // Mark that we've received socket data
+      setHasReceivedSocketData(true)
+      
+      if (bookings.length > 0) {
+        let updatedCount = 0;
+        setCircles(prevCircles => 
+          prevCircles.map(circle => {
+            const booking = bookings.find(b => b.circleId === circle.id)
+            if (booking) {
+              updatedCount++;
+              console.log(`📍 Applying booking: ${circle.id} -> ${booking.bookedBy}`);
+              return {
+                ...circle,
+                status: 'pending' as const,
+                bookedBy: booking.bookedBy,
+                bookedAt: booking.bookedAt
+              }
+            }
+            // Reset circles that are not in current bookings to available
+            if (circle.status === 'pending') {
+              console.log(`🔄 Resetting ${circle.id} to available (not in current bookings)`);
+              return {
+                ...circle,
+                status: 'available' as const,
+                bookedBy: undefined,
+                bookedAt: undefined
+              }
+            }
+            return circle
+          })
+        )
+        console.log(`✅ Updated ${updatedCount} circles with current booking state`);
+        setActiveBookingsCount(updatedCount);
+        toast.success(`📍 โหลดสถานะการจองปัจจุบันแล้ว (${updatedCount} จุดถูกจอง)`);
+      } else {
+        // No active bookings - reset all pending circles to available
+        setCircles(prevCircles => 
+          prevCircles.map(circle => {
+            if (circle.status === 'pending') {
+              console.log(`🔄 Resetting ${circle.id} to available (no active bookings)`);
+              return {
+                ...circle,
+                status: 'available' as const,
+                bookedBy: undefined,
+                bookedAt: undefined
+              }
+            }
+            return circle
+          })
+        )
+        console.log('✨ No active bookings - all circles reset to available');
+        setActiveBookingsCount(0);
+        toast.info('✨ ไม่มีการจองในขณะนี้');
+      }
+    }
+
+    // Listen for custom event from socket hook
+    window.addEventListener('temporaryBookingsReceived', handleTemporaryBookingsReceived as EventListener)
+    
+    return () => {
+      window.removeEventListener('temporaryBookingsReceived', handleTemporaryBookingsReceived as EventListener)
+    }
+  }, [])
+
+  // Listen for bookings released when clients disconnect
+  useEffect(() => {
+    const handleBookingsReleased = (event: CustomEvent) => {
+      const releasedCircles = event.detail as Array<{ id: string; status: string; bookedBy?: string; bookedAt?: number }>
+      console.log('🔓 Processing released bookings:', releasedCircles)
+      
+      if (releasedCircles.length > 0) {
+        setCircles(prevCircles => {
+          const newCircles = prevCircles.map(circle => {
+            const releasedCircle = releasedCircles.find(r => r.id === circle.id)
+            if (releasedCircle) {
+              return {
+                ...circle,
+                status: 'available' as const,
+                bookedBy: undefined,
+                bookedAt: undefined
+              }
+            }
+            return circle
+          })
+          // Update active bookings count
+          const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+          setActiveBookingsCount(newActiveCount)
+          return newCircles
+        })
+        toast.success(`🔓 ปล่อยห้องจากการ disconnect (${releasedCircles.length} รายการ)`);
+      }
+    }
+
+    // Listen for custom event from socket hook
+    window.addEventListener('bookingsReleased', handleBookingsReleased as EventListener)
+    
+    return () => {
+      window.removeEventListener('bookingsReleased', handleBookingsReleased as EventListener)
+    }
+  }, [])
+  
+  // Handle external circle updates (e.g., from Property List removal)
+  useEffect(() => {
+    if (onExternalCircleUpdate) {
+      const handleExternalUpdate = (updatedCircle: Circle) => {
+        console.log('🔄 Processing external circle update:', updatedCircle)
+        
+        // Validate the updated circle
+        if (!updatedCircle || !updatedCircle.id || !updatedCircle.status) {
+          console.error('❌ Invalid external circle update:', updatedCircle)
+          return
+        }
+        
+        setCircles(prevCircles => {
+          const newCircles = prevCircles.map(circle => {
+            if (circle.id === updatedCircle.id) {
+              console.log(`🔄 Updating circle ${circle.id} status: ${circle.status} -> ${updatedCircle.status}`);
+              const updatedCircleWithPosition = {
+                ...circle, // รักษาตำแหน่งจริง
+                status: updatedCircle.status,
+                bookedBy: updatedCircle.bookedBy,
+                bookedAt: updatedCircle.bookedAt
+              }
+              
+              // Broadcast ข้อมูลที่มีตำแหน่งจริงไปยัง clients อื่น
+              broadcastCircleUpdate(updatedCircleWithPosition)
+              
+              return updatedCircleWithPosition
+            }
+            return circle
+          })
+          // Update active bookings count
+          const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+          setActiveBookingsCount(newActiveCount)
+          return newCircles
+        })
+      }
+      
+      // Assign the handler to the ref
+      onExternalCircleUpdate.current = handleExternalUpdate
+    }
+  }, [onExternalCircleUpdate, broadcastCircleUpdate])
 
   // Initialize default background image
   useEffect(() => {
@@ -88,25 +385,55 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
     // Draw background image
     ctx.drawImage(backgroundImage, 0, 0)
 
-    // Draw circles
+    // Draw circles with different styles
     circles.forEach((circle) => {
+      const style = getCircleStyle(circle)
+      
       ctx.beginPath()
       ctx.arc(circle.x, circle.y, circle.r, 0, Math.PI * 2)
-      ctx.fillStyle = statusColors[circle.status] || "rgba(0,0,0,0.5)"
+      
+      // Fill circle
+      ctx.fillStyle = style.fillColor
       ctx.fill()
-      ctx.strokeStyle = "white"
-      ctx.lineWidth = 2 / scaleRef.current
+      
+      // Draw border
+      ctx.strokeStyle = style.strokeColor
+      ctx.lineWidth = style.strokeWidth / scaleRef.current
+      
+      // Draw dashed border for others' bookings
+      if (style.isDashed) {
+        ctx.setLineDash([5 / scaleRef.current, 3 / scaleRef.current])
+      } else {
+        ctx.setLineDash([])
+      }
+      
       ctx.stroke()
+      ctx.setLineDash([]) // Reset line dash
 
       // Draw circle ID
       ctx.fillStyle = "white"
       ctx.font = `${12 / scaleRef.current}px Arial`
       ctx.textAlign = "center"
-      ctx.fillText(circle.id, circle.x, circle.y + 4 / scaleRef.current)
+      ctx.fillText(circle.id, circle.x, circle.y - 8 / scaleRef.current)
+      
+      // Draw username for pending bookings with different colors
+      if (circle.status === "pending" && circle.bookedBy) {
+        const isOwnBooking = circle.bookedBy === currentUsername
+        ctx.fillStyle = isOwnBooking ? "#FFD700" : "#FFA500" // Gold for own, orange for others
+        ctx.font = `${10 / scaleRef.current}px Arial`
+        ctx.fillText(circle.bookedBy, circle.x, circle.y + 8 / scaleRef.current)
+        
+        // Add indicator for own bookings
+        if (isOwnBooking) {
+          ctx.fillStyle = "#FFD700"
+          ctx.font = `${8 / scaleRef.current}px Arial`
+          ctx.fillText("(คุณ)", circle.x, circle.y + 18 / scaleRef.current)
+        }
+      }
     })
 
     ctx.restore()
-  }, [backgroundImage, circles, statusColors])
+  }, [backgroundImage, circles, currentUsername])
 
   // Initialize canvas
   useEffect(() => {
@@ -245,44 +572,151 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
     isDraggingRef.current = false
   }, [])
 
-  // Handle status change
-  const handleStatusChange = useCallback(
-    (circle: Circle) => {
-      let newStatus: "available" | "booked" | "pending"
-      if (circle.status === "available") newStatus = "booked"
-      else if (circle.status === "booked") newStatus = "pending"
-      else newStatus = "available"
+  // Handle circle click logic
+  const handleCircleClick = useCallback(
+    async (circle: Circle) => {
+      try {
+        let newStatus: Circle['status']
+        let newBookedBy: string | undefined
+        let newBookedAt: number | undefined
 
-      setCircles((prevCircles) => prevCircles.map((c) => (c.id === circle.id ? { ...c, status: newStatus } : c)))
+        if (circle.status === 'available') {
+          // Anyone can book available circles
+          newStatus = 'pending'
+          newBookedBy = currentUsername
+          newBookedAt = Date.now()
+          toast.success(`จอง ${circle.id} สำเร็จ!`)
+        } else if (circle.status === 'pending') {
+          // Only the person who booked can cancel
+          if (circle.bookedBy === currentUsername) {
+            newStatus = 'available'
+            newBookedBy = undefined
+            newBookedAt = undefined
+            toast.success(`ยกเลิกการจอง ${circle.id} สำเร็จ!`)
+          } else {
+            toast.error(`ไม่สามารถยกเลิกการจองของ ${circle.bookedBy} ได้`)
+            return
+          }
+        } else {
+          // Booked circles cannot be changed
+          toast.info(`${circle.id} ถูกจองแล้ว`)
+          return
+        }
 
-      onCircleClick?.({ ...circle, status: newStatus })
+        const updatedCircle: Circle = {
+          ...circle,
+          status: newStatus,
+          bookedBy: newBookedBy,
+          bookedAt: newBookedAt
+        }
+
+        // Optimistic update
+        setCircles(prevCircles => {
+          const newCircles = prevCircles.map(c => c.id === circle.id ? updatedCircle : c)
+          // Update active bookings count
+          const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+          setActiveBookingsCount(newActiveCount)
+          return newCircles
+        })
+
+        // Broadcast to other clients
+        broadcastCircleUpdate(updatedCircle)
+
+        // Call parent callback if provided
+        onCircleClick?.(updatedCircle)
+      } catch (error) {
+        console.error('❌ Failed to update circle:', error)
+        toast.error('ไม่สามารถอัปเดตสถานะได้')
+      }
     },
-    [onCircleClick],
+    [currentUsername, broadcastCircleUpdate, onCircleClick]
   )
 
-  // Handle click on circles
+  // Handle canvas click
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (isDraggingRef.current) return
+      if (isDraggingRef.current) return // Don't handle click if we were dragging
 
       const canvas = canvasRef.current
       if (!canvas) return
 
       const rect = canvas.getBoundingClientRect()
-      const mx = (e.clientX - rect.left - offsetRef.current.x) / scaleRef.current
-      const my = (e.clientY - rect.top - offsetRef.current.y) / scaleRef.current
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
 
+      // Convert screen coordinates to world coordinates
+      const worldX = (mouseX - offsetRef.current.x) / scaleRef.current
+      const worldY = (mouseY - offsetRef.current.y) / scaleRef.current
+
+      // Check if click is on any circle
       for (const circle of circles) {
-        const dx = mx - circle.x
-        const dy = my - circle.y
-        if (Math.sqrt(dx * dx + dy * dy) <= circle.r) {
-          handleStatusChange(circle)
+        const distance = Math.sqrt((worldX - circle.x) ** 2 + (worldY - circle.y) ** 2)
+        if (distance <= circle.r) {
+          handleCircleClick(circle)
           break
         }
       }
     },
-    [circles, handleStatusChange],
+    [circles, handleCircleClick]
   )
+
+  // Handle status change with temporary booking logic
+  const handleStatusChange = useCallback(
+    (circle: Circle) => {
+      const now = Date.now()
+      let updatedCircle: Circle
+      
+      if (circle.status === "available") {
+        // Anyone can book available spots
+        updatedCircle = {
+          ...circle,
+          status: "pending",
+          bookedBy: currentUsername,
+          bookedAt: now
+        }
+        toast.success(`📍 ${currentUsername} จอง ${circle.id} ไว้ชั่วคราว`)
+      } else if (circle.status === "pending") {
+        // Only the person who booked can cancel
+        if (circle.bookedBy === currentUsername) {
+          updatedCircle = {
+            ...circle,
+            status: "available",
+            bookedBy: undefined,
+            bookedAt: undefined
+          }
+          toast.success(`❌ ${currentUsername} ยกเลิกการจอง ${circle.id}`)
+        } else {
+          toast.error(`⚠️ ไม่สามารถยกเลิกได้ ${circle.id} ถูกจองโดย ${circle.bookedBy}`)
+          return // Don't update if not the owner
+        }
+      } else {
+        // booked status - shouldn't happen in temporary booking
+        return
+      }
+      
+      // Update local state immediately (no DB update)
+      setCircles((prevCircles) => 
+        prevCircles.map((c) => (c.id === circle.id ? updatedCircle : c))
+      )
+      
+      // Broadcast to other clients via Socket.IO
+      broadcastCircleUpdate(updatedCircle)
+      
+      // Call callback
+      onCircleClick?.(updatedCircle)
+      
+      console.log(`🔄 Status changed:`, {
+        id: circle.id,
+        from: circle.status,
+        to: updatedCircle.status,
+        user: currentUsername,
+        bookedBy: updatedCircle.bookedBy
+      })
+    },
+    [currentUsername, broadcastCircleUpdate, onCircleClick],
+  )
+
+
 
   // Touch events
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -448,6 +882,38 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
 
       {/* Filter and Control Buttons */}
       <div className="absolute top-4 left-4 flex flex-col gap-2">
+        {/* User Info */}
+        <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-gray-200">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm font-medium text-gray-700">{currentUsername}</span>
+            </div>
+            <div className="text-xs text-gray-500 mb-2">
+              ระบบจองชั่วคราว (ไม่บันทึกใน DB)
+            </div>
+            
+            {/* Connection Status */}
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-2 h-2 rounded-full ${
+                isLoading ? 'bg-yellow-500 animate-pulse' : 
+                isConnected ? 'bg-green-500' : 'bg-red-500'
+              }`}></div>
+              <span className="text-xs text-gray-600">
+                {isLoading ? 'กำลังเชื่อมต่อ...' : 
+                 isConnected ? 'เชื่อมต่อแล้ว' : 'ไม่ได้เชื่อมต่อ'}
+              </span>
+            </div>
+            
+            {/* Active Bookings Count */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-600">
+                การจองปัจจุบัน: <span className="font-medium text-blue-600">{activeBookingsCount}</span> จุด
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Filter Options */}
         <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-gray-200">
           <CardContent className="p-3">
@@ -547,8 +1013,9 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
           <div className="space-y-1">
             <p>• ใช้ล้อเมาส์เพื่อซูม</p>
             <p>• ลากเพื่อเลื่อนแผนที่</p>
-            <p>• คลิกวงกลมเพื่อเปลี่ยนสถานะ</p>
-            <p>• ลากรูปภาพมาวางเพื่อเปลี่ยนพื้นหลัง</p>
+            <p>• คลิกวงกลมเขียวเพื่อจองชั่วคราว</p>
+            <p>• คลิกวงกลมสีส้มที่คุณจองเพื่อยกเลิก</p>
+            <p>• คนอื่นไม่สามารถยกเลิกการจองของคนอื่น</p>
             <p>• บนมือถือ: หยิกเพื่อซูม</p>
           </div>
         </div>
