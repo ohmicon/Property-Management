@@ -21,13 +21,14 @@ export interface Circle {
 
 interface CanvasMapProps {
   onCircleClick?: (circle: Circle) => void
-  onImageUpload?: (imageUrl: string) => void
+  onImageUpload?: (file: File) => void
   onFilterChange?: (mode: "day" | "month") => void
   selectedPropertyIds?: Set<string>
   onExternalCircleUpdate?: React.MutableRefObject<((circle: Circle) => void) | null> // ใช้ ref สำหรับ external update
+  onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
 }
 
-export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange, selectedPropertyIds, onExternalCircleUpdate }: CanvasMapProps) {
+export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange, selectedPropertyIds, onExternalCircleUpdate, onCirclesChange }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
   const [isImageLoaded, setIsImageLoaded] = useState(false)
@@ -125,40 +126,52 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
         setIsLoadingCircles(true)
         const circlesData = await getCircles()
         
-        // If we haven't received socket data yet, reset all to available
-        // If we have received socket data, preserve current booking states
-        if (!hasReceivedSocketData) {
-          const resetCircles = circlesData.map(circle => ({
-            ...circle,
-            status: 'available' as const,
-            bookedBy: undefined,
-            bookedAt: undefined
-          }))
-          setCircles(resetCircles)
-          console.log('✅ Loaded and reset circles (no socket data yet):', resetCircles.length)
-        } else {
-          // Merge with existing booking states
-          setCircles(prevCircles => {
-            const mergedCircles = circlesData.map(dbCircle => {
-              const existingCircle = prevCircles.find(c => c.id === dbCircle.id)
-              if (existingCircle && existingCircle.status === 'pending') {
-                // Preserve booking state from socket
-                return existingCircle
-              }
-              // Use DB data but reset booking state
-              return {
-                ...dbCircle,
-                status: 'available' as const,
-                bookedBy: undefined,
-                bookedAt: undefined
-              }
-            })
-            console.log('✅ Loaded circles and preserved socket booking states:', mergedCircles.length)
-            return mergedCircles
-          })
+        // Request current temporary bookings state from server
+        if (socket && socket.connected) {
+          console.log('📡 Requesting current booking state from server...')
+          socket.emit('requestCurrentState')
         }
         
-        console.log('👤 Current user:', username)
+        // Process circles data from API
+        setCircles(prevCircles => {
+          const mergedCircles = circlesData.map(dbCircle => {
+            // If the circle is already booked in the API data, keep it as booked
+            // This is authoritative and should never be overridden
+            if (dbCircle.status === 'booked') {
+              console.log(`🔒 Circle ${dbCircle.id} is booked in API - preserving booked status`)
+              return dbCircle
+            }
+            
+            // Check if this circle has a pending status in our current state
+            const existingCircle = prevCircles.find(c => c.id === dbCircle.id)
+            if (existingCircle && existingCircle.status === 'pending') {
+              // Preserve pending booking state from current state
+              console.log(`🔄 Preserving pending status for ${dbCircle.id} booked by ${existingCircle.bookedBy}`)
+              return existingCircle
+            }
+            
+            // For available circles, use the API data
+            return {
+              ...dbCircle,
+              status: 'available' as const,
+              bookedBy: undefined,
+              bookedAt: undefined
+            }
+          })
+          
+          // Count booked and pending circles for logging
+          const bookedCount = mergedCircles.filter(c => c.status === 'booked').length
+          const pendingCount = mergedCircles.filter(c => c.status === 'pending').length
+          
+          console.log(`✅ Loaded circles with preserved states: ${mergedCircles.length} total, ${bookedCount} booked, ${pendingCount} pending`)
+          
+          // Update active bookings count for UI
+          setActiveBookingsCount(pendingCount)
+          
+          return mergedCircles
+        })
+        
+        console.log('👤 Current user:', currentUsername)
       } catch (error) {
         console.error('❌ Failed to load circles:', error)
         toast.error('ไม่สามารถโหลดข้อมูลจุดจองได้')
@@ -216,8 +229,14 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       
       if (bookings.length > 0) {
         let updatedCount = 0;
-        setCircles(prevCircles => 
-          prevCircles.map(circle => {
+        setCircles(prevCircles => {
+          const newCircles = prevCircles.map(circle => {
+            // Don't modify circles that are already booked from API - this is authoritative
+            if (circle.status === 'booked') {
+              console.log(`🔒 Preserving booked status for ${circle.id} (API authoritative)`);
+              return circle;
+            }
+            
             const booking = bookings.find(b => b.circleId === circle.id)
             if (booking) {
               updatedCount++;
@@ -230,6 +249,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
               }
             }
             // Reset circles that are not in current bookings to available
+            // but only if they are currently pending
             if (circle.status === 'pending') {
               console.log(`🔄 Resetting ${circle.id} to available (not in current bookings)`);
               return {
@@ -241,14 +261,27 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
             }
             return circle
           })
-        )
+          
+          // Notify parent component about changes if needed
+          if (onCirclesChange) {
+            setTimeout(() => onCirclesChange(newCircles), 0);
+          }
+          
+          return newCircles;
+        })
         console.log(`✅ Updated ${updatedCount} circles with current booking state`);
         setActiveBookingsCount(updatedCount);
         toast.success(`📍 โหลดสถานะการจองปัจจุบันแล้ว (${updatedCount} จุดถูกจอง)`);
       } else {
         // No active bookings - reset all pending circles to available
-        setCircles(prevCircles => 
-          prevCircles.map(circle => {
+        // but preserve booked status
+        setCircles(prevCircles => {
+          const newCircles = prevCircles.map(circle => {
+            // Don't modify circles that are already booked - this is authoritative
+            if (circle.status === 'booked') {
+              return circle;
+            }
+            
             if (circle.status === 'pending') {
               console.log(`🔄 Resetting ${circle.id} to available (no active bookings)`);
               return {
@@ -260,8 +293,15 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
             }
             return circle
           })
-        )
-        console.log('✨ No active bookings - all circles reset to available');
+          
+          // Notify parent component about changes if needed
+          if (onCirclesChange) {
+            setTimeout(() => onCirclesChange(newCircles), 0);
+          }
+          
+          return newCircles;
+        })
+        console.log('✨ No active bookings - pending circles reset to available');
         setActiveBookingsCount(0);
         toast.info('✨ ไม่มีการจองในขณะนี้');
       }
@@ -284,8 +324,15 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       if (releasedCircles.length > 0) {
         setCircles(prevCircles => {
           const newCircles = prevCircles.map(circle => {
+            // Don't modify circles that are already booked from API - this is authoritative
+            if (circle.status === 'booked') {
+              console.log(`🔒 Preserving booked status for ${circle.id} (API authoritative)`);
+              return circle
+            }
+            
             const releasedCircle = releasedCircles.find(r => r.id === circle.id)
             if (releasedCircle) {
+              console.log(`🔓 Releasing circle: ${circle.id} from pending state`)
               return {
                 ...circle,
                 status: 'available' as const,
@@ -295,9 +342,16 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
             }
             return circle
           })
+          
           // Update active bookings count
           const newActiveCount = newCircles.filter(c => c.status === 'pending').length
           setActiveBookingsCount(newActiveCount)
+          
+          // Notify parent component about changes if needed
+          if (onCirclesChange) {
+            setTimeout(() => onCirclesChange(newCircles), 0);
+          }
+          
           return newCircles
         })
         toast.success(`🔓 ปล่อยห้องจากการ disconnect (${releasedCircles.length} รายการ)`);
@@ -327,6 +381,14 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
         setCircles(prevCircles => {
           const newCircles = prevCircles.map(circle => {
             if (circle.id === updatedCircle.id) {
+              // Don't allow external updates to modify circles that are already booked from API
+              // This is authoritative and should never be overridden
+              if (circle.status === 'booked') {
+                console.log(`🔒 Ignoring update for booked circle ${circle.id} (API authoritative)`);
+                toast.info(`${circle.id} ถูกจองแล้ว ไม่สามารถเปลี่ยนแปลงได้`);
+                return circle;
+              }
+              
               console.log(`🔄 Updating circle ${circle.id} status: ${circle.status} -> ${updatedCircle.status}`);
               const updatedCircleWithPosition = {
                 ...circle, // รักษาตำแหน่งจริง
@@ -342,9 +404,11 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
             }
             return circle
           })
+          
           // Update active bookings count
           const newActiveCount = newCircles.filter(c => c.status === 'pending').length
           setActiveBookingsCount(newActiveCount)
+          
           return newCircles
         })
       }
@@ -352,7 +416,14 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       // Assign the handler to the ref
       onExternalCircleUpdate.current = handleExternalUpdate
     }
-  }, [onExternalCircleUpdate, broadcastCircleUpdate])
+  }, [onExternalCircleUpdate, broadcastCircleUpdate, toast])
+
+  // Send circles back to parent when they change
+  useEffect(() => {
+    if (onCirclesChange) {
+      onCirclesChange(circles)
+    }
+  }, [circles, onCirclesChange])
 
   // Initialize default background image
   useEffect(() => {
@@ -469,9 +540,9 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
           offsetRef.current = { x: 0, y: 0 }
           scaleRef.current = 1
 
-          // Call the callback with the image URL
-          if (onImageUpload && e.target?.result) {
-            onImageUpload(e.target.result as string)
+          // Call the callback with the File object
+          if (onImageUpload) {
+            onImageUpload(file)
           }
         }
         img.src = e.target?.result as string
@@ -689,8 +760,12 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
           toast.error(`⚠️ ไม่สามารถยกเลิกได้ ${circle.id} ถูกจองโดย ${circle.bookedBy}`)
           return // Don't update if not the owner
         }
+      } else if (circle.status === "booked") {
+        // Booked circles from API are permanent and cannot be changed
+        toast.info(`${circle.id} ถูกจองแล้ว ไม่สามารถเปลี่ยนแปลงได้`)
+        return
       } else {
-        // booked status - shouldn't happen in temporary booking
+        // Unknown status - shouldn't happen
         return
       }
       
@@ -885,31 +960,37 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
         {/* User Info */}
         <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-gray-200">
           <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium text-gray-700">{currentUsername}</span>
-            </div>
-            <div className="text-xs text-gray-500 mb-2">
-              ระบบจองชั่วคราว (ไม่บันทึกใน DB)
+            {/* User Info and Connection Status in one row */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm font-medium text-gray-700">{currentUsername}</span>
+              </div>
+              
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gray-50 border border-gray-100">
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  isLoading ? 'bg-yellow-500 animate-pulse' : 
+                  isConnected ? 'bg-green-500' : 'bg-red-500'
+                }`}></div>
+                <span className="text-xs text-gray-600">
+                  {isLoading ? 'กำลังเชื่อมต่อ' : 
+                   isConnected ? 'ออนไลน์' : 'ออฟไลน์'}
+                </span>
+              </div>
             </div>
             
-            {/* Connection Status */}
-            <div className="flex items-center gap-2 mb-1">
-              <div className={`w-2 h-2 rounded-full ${
-                isLoading ? 'bg-yellow-500 animate-pulse' : 
-                isConnected ? 'bg-green-500' : 'bg-red-500'
-              }`}></div>
-              <span className="text-xs text-gray-600">
-                {isLoading ? 'กำลังเชื่อมต่อ...' : 
-                 isConnected ? 'เชื่อมต่อแล้ว' : 'ไม่ได้เชื่อมต่อ'}
-              </span>
-            </div>
-            
-            {/* Active Bookings Count */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-600">
-                การจองปัจจุบัน: <span className="font-medium text-blue-600">{activeBookingsCount}</span> จุด
-              </span>
+            <div className="flex justify-between items-center">
+              {/* System Info */}
+              <div className="text-xs text-gray-500">
+                ระบบจองชั่วคราว
+              </div>
+              
+              {/* Active Bookings Count */}
+              <div className="flex items-center gap-1 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-100">
+                <span className="text-xs text-blue-700">
+                  จองแล้ว <span className="font-medium">{activeBookingsCount}</span> จุด
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>

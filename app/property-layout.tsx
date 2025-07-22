@@ -1,18 +1,20 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send } from "lucide-react"
+import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import CanvasMap, { Circle } from "@/components/canvas-map"
 import { useToast } from "@/hooks/use-toast"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
+import { getCurrentUsername } from "@/lib/user-utils"
 import ConnectionGuard from "@/components/connection-guard"
+import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 
 interface Property {
   id: string
@@ -30,8 +32,8 @@ export default function PropertyLayout() {
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
 
   const [activeTab, setActiveTab] = useState("monthly")
-  const [selectedMonth, setSelectedMonth] = useState("6")
-  const [selectedYear, setSelectedYear] = useState("2025")
+  const [selectedMonth, setSelectedMonth] = useState(() => (new Date().getMonth() + 1).toString()) // เดือนปัจจุบัน
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString()) // ปีปัจจุบัน
   const [selectedZone, setSelectedZone] = useState("")
   const [showLegend, setShowLegend] = useState(true)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
@@ -40,7 +42,8 @@ export default function PropertyLayout() {
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<string>>(new Set())
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [mapFilterMode, setMapFilterMode] = useState<"day" | "month">("month")
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date>(() => new Date())
   const { toast } = useToast()
 
   // Mock property data for the selected area
@@ -49,14 +52,102 @@ export default function PropertyLayout() {
   
   // Ref for external circle update handler
   const externalCircleUpdateRef = useRef<((circle: Circle) => void) | null>(null)
+  
+  // State สำหรับ circles จาก CanvasMap
+  const [circles, setCircles] = useState<Circle[]>([])
+  
+  // ฟังก์ชันสำหรับรีเฟรชข้อมูล
+  const handleRefreshData = async () => {
+    try {
+      setIsRefreshing(true)
+      toast({
+        title: "⏳ กำลังรีเฟรชข้อมูล...",
+        description: "กรุณารอสักครู่",
+        duration: 2000,
+      })
+      
+      // ดึงข้อมูลล่าสุดจาก API
+      const freshCircles = await getCircles()
+      console.log('📊 ข้อมูลล่าสุดจาก API:', freshCircles)
+      
+      // อัพเดทข้อมูล circles
+      setCircles(prevCircles => {
+        const currentUser = getCurrentUsername()
+        console.log('👤 Current user:', currentUser)
+        console.log('🔍 Selected property IDs:', Array.from(selectedPropertyIds))
+        
+        const updatedCircles = freshCircles.map(newCircle => {
+          const existingCircle = prevCircles.find(c => c.id === newCircle.id)
+          console.log(`🔄 Processing circle ${newCircle.id}: DB status = ${newCircle.status}, Current status = ${existingCircle?.status || 'N/A'}`)
+          
+          // กรณีที่ 1: ถ้าใน DB เป็น booked ให้ใช้สถานะจาก DB
+          if (newCircle.status === 'booked') {
+            console.log(`✅ Circle ${newCircle.id} is booked in DB, keeping as booked`)
+            return {
+              ...newCircle,
+              status: 'booked' as const,
+              bookedBy: newCircle.bookedBy || 'system',
+              bookedAt: newCircle.bookedAt || new Date().toISOString()
+            }
+          }
+          
+          // กรณีที่ 2: ถ้าเป็น pending และเป็นของ user ปัจจุบัน ให้คงสถานะไว้
+          if (existingCircle && existingCircle.status === 'pending' && existingCircle.bookedBy === currentUser) {
+            console.log(`🕒 Circle ${newCircle.id} is pending by current user, keeping as pending`)
+            return {
+              ...newCircle,
+              status: 'pending' as const,
+              bookedBy: currentUser,
+              bookedAt: existingCircle.bookedAt
+            }
+          }
+          
+          // กรณีที่ 3: ถ้าเป็น available แต่อยู่ใน selectedPropertyIds ให้เปลี่ยนเป็น pending
+          if (newCircle.status === 'available' && selectedPropertyIds.has(newCircle.id)) {
+            console.log(`🔄 Circle ${newCircle.id} is available but selected, marking as pending`)
+            return {
+              ...newCircle,
+              status: 'pending' as const,
+              bookedBy: currentUser,
+              bookedAt: new Date().toISOString()
+            }
+          }
+          
+          // กรณีอื่นๆ ให้ใช้ข้อมูลใหม่จาก API
+          console.log(`ℹ️ Circle ${newCircle.id} using DB status: ${newCircle.status}`)
+          return newCircle
+        })
+        
+        return updatedCircles as Circle[]
+      })
+      
+      // อัพเดทเวลารีเฟรชล่าสุด
+      setLastRefreshTime(new Date())
+      
+      toast({
+        title: "🎉 รีเฟรชข้อมูลสำเร็จ",
+        description: "ข้อมูลแปลงที่ดินได้รับการอัพเดทแล้ว",
+        duration: 3000
+      })
+    } catch (error) {
+      console.error("❌ เกิดข้อผิดพลาดในการรีเฟรชข้อมูล:", error)
+      toast({
+        title: "❌ เกิดข้อผิดพลาด",
+        description: "ไม่สามารถรีเฟรชข้อมูลได้ กรุณาลองใหม่อีกครั้ง",
+        duration: 3000
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
   // Calendar highlighted days (booking days)
   // const highlightedDays = [11, 12, 13, 14, 18, 19, 20, 21, 25, 26, 27, 28]
 
-  // เพิ่ม state สำหรับปฏิทิน
-  const [selectedDates, setSelectedDates] = useState<number[]>([11, 12, 13, 14, 18, 19, 20, 21, 25, 26, 27, 28])
-  const [currentMonth, setCurrentMonth] = useState(6) // June
-  const [currentYear, setCurrentYear] = useState(2025)
+  // เพิ่ม state สำหรับปฏิทิน - เริ่มต้นด้วยเดือนปัจจุบันและไม่เลือกวันใด
+  const [selectedDates, setSelectedDates] = useState<number[]>([])
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth() + 1) // เดือนปัจจุบัน
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear()) // ปีปัจจุบัน
   const [isSelectingRange, setIsSelectingRange] = useState(false)
   const [rangeStart, setRangeStart] = useState<number | null>(null)
 
@@ -88,6 +179,16 @@ export default function PropertyLayout() {
   }
 
   const handleDateClick = (day: number) => {
+    // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
+    const today = new Date()
+    const selectedDate = new Date(currentYear, currentMonth - 1, day)
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    
+    if (selectedDate < todayStart) {
+      // ไม่สามารถเลือกวันที่ผ่านมาแล้ว
+      return
+    }
+
     if (isSelectingRange) {
       if (rangeStart === null) {
         setRangeStart(day)
@@ -96,7 +197,12 @@ export default function PropertyLayout() {
         const start = Math.min(rangeStart, day)
         const end = Math.max(rangeStart, day)
         const range = Array.from({ length: end - start + 1 }, (_, i) => start + i)
-        setSelectedDates(range)
+        // กรองเฉพาะวันที่ไม่ผ่านมาแล้ว
+        const validRange = range.filter(d => {
+          const checkDate = new Date(currentYear, currentMonth - 1, d)
+          return checkDate >= todayStart
+        })
+        setSelectedDates(validRange)
         setRangeStart(null)
         setIsSelectingRange(false)
       }
@@ -134,12 +240,16 @@ export default function PropertyLayout() {
   const selectWeekdays = () => {
     const daysInMonth = getDaysInMonth(currentMonth, currentYear)
     const firstDay = getFirstDayOfMonth(currentMonth, currentYear)
+    const today = new Date()
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const weekdays = []
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dayOfWeek = (firstDay + day - 2) % 7 // 0 = Monday, 6 = Sunday
-      if (dayOfWeek < 5) {
-        // Monday to Friday
+      const checkDate = new Date(currentYear, currentMonth - 1, day)
+      
+      if (dayOfWeek < 5 && checkDate >= todayStart) {
+        // Monday to Friday และไม่ผ่านมาแล้ว
         weekdays.push(day)
       }
     }
@@ -149,12 +259,16 @@ export default function PropertyLayout() {
   const selectWeekends = () => {
     const daysInMonth = getDaysInMonth(currentMonth, currentYear)
     const firstDay = getFirstDayOfMonth(currentMonth, currentYear)
+    const today = new Date()
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const weekends = []
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dayOfWeek = (firstDay + day - 2) % 7
-      if (dayOfWeek >= 5) {
-        // Saturday and Sunday
+      const checkDate = new Date(currentYear, currentMonth - 1, day)
+      
+      if (dayOfWeek >= 5 && checkDate >= todayStart) {
+        // Saturday and Sunday และไม่ผ่านมาแล้ว
         weekends.push(day)
       }
     }
@@ -192,11 +306,53 @@ export default function PropertyLayout() {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  
+  // Sync propertyList กับ circles ที่มีสถานะ pending และถูกเลือกโดย user
+  useEffect(() => {
+    // หาจุดที่มีสถานะ pending และถูกเลือกโดย user ปัจจุบัน
+    const currentUser = getCurrentUsername()
+    console.log('🔄 Syncing propertyList with circles - current user:', currentUser)
+    console.log('🔄 Selected property IDs:', Array.from(selectedPropertyIds))
+    
+    const pendingCircles = circles.filter(circle => 
+      circle.status === 'pending' && 
+      circle.bookedBy === currentUser &&
+      selectedPropertyIds.has(circle.id)
+    )
+    
+    console.log('🔄 Found pending circles for current user:', pendingCircles.length)
+    
+    // สร้าง propertyList จาก pending circles
+    const newPropertyList: Property[] = pendingCircles.map(circle => ({
+      id: circle.id,
+      price: Math.floor(Math.random() * 1000 + 1000).toString(),
+      status: circle.status,
+    }))
+    
+    console.log('🔄 New property list:', newPropertyList)
+    
+    // อัปเดต propertyList และ bookingData พร้อมกัน
+    setPropertyList(newPropertyList)
+    setBookingData(newPropertyList)
+    
+    // แสดง Property List ถ้ามีจุดที่เลือก
+    if (newPropertyList.length > 0) {
+      setShowPropertyList(true)
+    } else if (showPropertyList) {
+      // ถ้าไม่มีจุดที่เลือกแล้ว และกำลังแสดง Property List อยู่ ให้ซ่อน
+      setShowPropertyList(false)
+    }
+  }, [circles, selectedPropertyIds, showPropertyList])
 
   // Generate detailed booking data
   const generateBookingDetails = useMemo(() => {
     const details: BookingDetail[] = []
-    const bookingDates = ["17 ธันวาคม 2558", "18 ธันวาคม 2558", "19 ธันวาคม 2558", "20 ธันวาคม 2558"]
+    
+    // ใช้วันที่ที่ผู้ใช้เลือกจริงๆ แทนวันที่คงที่
+    const selectedDateStrings = selectedDates.map(day => `${day} ${getMonthName(currentMonth)} ${currentYear}`)
+    
+    // ถ้าไม่มีวันที่เลือก ให้ใช้วันนี้เป็นค่าเริ่มต้น
+    const bookingDates = selectedDateStrings.length > 0 ? selectedDateStrings : [`${new Date().getDate()} ${getMonthName(new Date().getMonth() + 1)} ${new Date().getFullYear()}`]
 
     confirmedProperties.forEach((property) => {
       bookingDates.forEach((date) => {
@@ -209,11 +365,14 @@ export default function PropertyLayout() {
     })
 
     return details
-  }, [confirmedProperties])
+  }, [confirmedProperties, selectedDates, currentMonth, currentYear])
 
+  // คำนวณยอดรวมทั้งหมดโดยใช้ bookingSummary.totalDays แทน
   const totalBookingAmount = useMemo(() => {
-    return generateBookingDetails.reduce((sum, detail) => sum + detail.amount, 0)
-  }, [generateBookingDetails])
+    return confirmedProperties.reduce((sum, property) => {
+      return sum + (Number.parseFloat(property.price.replace(",", "")) * bookingSummary.totalDays)
+    }, 0)
+  }, [confirmedProperties, bookingSummary.totalDays])
 
   const handlePropertyClick = (property: Circle) => {
     // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
@@ -226,18 +385,8 @@ export default function PropertyLayout() {
     setSelectedProperty(property)
 
     // เพิ่มรายการเข้าไปใน propertyList ถ้ายังไม่มี
-    setPropertyList((prevList) => {
-      const exists = prevList.find((item) => item.id === property.id)
-      if (!exists) {
-        const newProperty: Property = {
-          id: property.id,
-          price: Math.floor(Math.random() * 1000 + 1000).toString(), // Random price 1000-2000
-          status: property.status,
-        }
-        return [...prevList, newProperty]
-      }
-      return prevList
-    })
+    // แต่ต้องรอให้จุดเปลี่ยนเป็น pending ก่อน (จะเพิ่มใน useEffect)
+    // setPropertyList จะทำใน useEffect ที่ listen การเปลี่ยนแปลงสถานะ
 
     // เพิ่ม ID เข้าไปใน selectedPropertyIds
     setSelectedPropertyIds(prev => new Set([...prev, property.id]))
@@ -245,16 +394,26 @@ export default function PropertyLayout() {
     onSelectBooking(property)
 
     setShowPropertyList(true)
+    // ปิดกรอบการจองเมื่อแสดงรายการแปลง
     setShowDetailPanel(false)
   }
 
   const handleRemoveProperty = (propertyId: string) => {
+    console.log('🗑️ Removing property:', propertyId)
+    
     // ลบจาก propertyList และตรวจสอบว่าต้องซ่อน Property List หรือไม่
     setPropertyList((prevList) => {
       const filteredList = prevList.filter((item) => item.id !== propertyId)
+      console.log('🗑️ Updated property list:', filteredList)
+      
+      // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
+      setBookingData(filteredList)
+      
       if (filteredList.length === 0) {
+        console.log('🗑️ No properties left, hiding property list')
         setShowPropertyList(false)
       }
+      
       return filteredList
     })
     
@@ -262,14 +421,23 @@ export default function PropertyLayout() {
     setSelectedPropertyIds(prev => {
       const newSet = new Set(prev)
       newSet.delete(propertyId)
+      console.log('🗑️ Updated selected property IDs:', Array.from(newSet))
       return newSet
     })
     
+    // ค้นหาจุดที่ต้องการยกเลิกจาก circles ที่มีอยู่
+    const circleToCancel = circles.find(circle => circle.id === propertyId)
+    
     // ส่งสัญญาณไปยัง Canvas Map เพื่อยกเลิกการจองโดยตรง
-    // หาจุดจาก selectedProperty หรือใช้ค่า default
-    const existingProperty = selectedProperty && selectedProperty.id === propertyId ? selectedProperty : {
+    const cancelledProperty: Circle = circleToCancel ? {
+      ...circleToCancel, // รักษาตำแหน่งและขนาดจริง
+      status: 'available',
+      bookedBy: undefined,
+      bookedAt: undefined
+    } : {
+      // ถ้าไม่พบจุดในข้อมูลปัจจุบัน ใช้ค่า default
       id: propertyId,
-      x: 100, // ค่า default ถ้าไม่มีข้อมูลจริง
+      x: 100,
       y: 100,
       r: 20,
       status: 'available' as const,
@@ -277,14 +445,7 @@ export default function PropertyLayout() {
       bookedAt: undefined
     }
     
-    const cancelledProperty: Circle = {
-      ...existingProperty,
-      status: 'available',
-      bookedBy: undefined,
-      bookedAt: undefined
-    }
-    
-    console.log('🗑️ Creating cancelled property:', cancelledProperty);
+    console.log('🗑️ Sending cancelled property to CanvasMap:', cancelledProperty);
     
     // อัปเดต Canvas Map โดยตรงผ่าน external update handler
     // (การเรียก broadcastCircleUpdate จะทำใน external handler แล้ว)
@@ -299,13 +460,33 @@ export default function PropertyLayout() {
   }
 
   const handleViewDetails = () => {
-    // ส่งข้อมูล propertyList ไปที่ booking
+    // ส่งข้อมูล propertyList ไปที่ booking และตรวจสอบว่ามีข้อมูลหรือไม่
+    if (propertyList.length === 0) {
+      toast({
+        title: "ไม่มีแปลงที่เลือก",
+        description: "กรุณาเลือกแปลงที่ต้องการจองก่อน",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    console.log('📋 Viewing details for properties:', propertyList)
     setBookingData([...propertyList])
     setShowPropertyList(false)
     setShowDetailPanel(true)
   }
+  
+  const handleCloseDetailPanel = () => {
+    setShowDetailPanel(false)
+    // ตรวจสอบว่ายังมีรายการที่เลือกอยู่หรือไม่ ถ้ามีให้แสดง Property List กลับมา
+    if (propertyList.length > 0) {
+      setShowPropertyList(true)
+    }
+  }
 
-  const handleImageUpload = (imageUrl: string) => {
+  const handleImageUpload = (file: File) => {
+    // สร้าง URL จาก File สำหรับการแสดงผล
+    const imageUrl = URL.createObjectURL(file)
     setUploadedImage(imageUrl)
   }
 
@@ -325,63 +506,67 @@ export default function PropertyLayout() {
 
   const handleConfirmBooking = async () => {
     setShowConfirmDialog(false)
-    setIsProcessingPayment(true)
-
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    // Show success toast
-    toast({
-      title: "🎉 จองสำเร็จ!",
-      description: `จองแปลงที่ ${bookingData.map((p) => p.id).join(", ")} เป็นจำนวน ${bookingSummary.totalDays} วัน ราคารวม ${totalBookingAmount.toLocaleString()} บาท`,
-      duration: 5000,
-    })
-
-    // Clear all data
-    setPropertyList([])
-    setBookingData([])
-    setSelectedProperty(null)
-    setShowDetailPanel(false)
-    setShowPropertyList(false)
-    setIsProcessingPayment(false)
-    setShowConfirmation(false)
-    setConfirmedProperties([])
-  }
-
-  const handlePayment = async () => {
-    setIsProcessingPayment(true)
-
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    // Show success toast
-    toast({
-      title: "🎉 จองสำเร็จ!",
-      description: `จองแปลงที่ ${bookingData.map((p) => p.id).join(", ")} เป็นจำนวน ${bookingSummary.totalDays} วัน ราคารวม ${bookingSummary.totalPrice} บาท`,
-      duration: 5000,
-    })
-
-    // Clear all data
-    setPropertyList([])
-    setBookingData([])
-    setSelectedProperty(null)
-    setShowDetailPanel(false)
-    setShowPropertyList(false)
-    setIsProcessingPayment(false)
-    setShowConfirmation(false)
-    setConfirmedProperties([])
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "available":
-        return "ว่าง"
-      case "booked":
-        return "ขายแล้ว"
-      case "pending":
-        return "จอง"
-      default:
-        return status
+  
+    try {
+      // แสดง toast กำลังดำเนินการ
+      toast({
+        title: "⏳ กำลังบันทึกการจอง...",
+        description: "กรุณารอสักครู่",
+        duration: 3000,
+      })
+    
+      // สร้าง array สำหรับเก็บจุดที่อัพเดทสำเร็จ
+      const updatedCircles: Circle[] = []
+    
+      // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
+      for (const property of bookingData) {
+        try {
+          // เรียก API เพื่ออัพเดทสถานะเป็น booked
+          const updatedCircle = await updateCircleStatus(property.id, 'booked')
+        
+          // เก็บจุดที่อัพเดทสำเร็จ
+          updatedCircles.push(updatedCircle)
+        
+          // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
+          if (externalCircleUpdateRef.current) {
+            externalCircleUpdateRef.current(updatedCircle)
+          }
+        } catch (error) {
+          console.error(`ไม่สามารถอัพเดทแปลง ${property.id} ได้:`, error)
+        }
+      }
+      
+      // แสดง toast สำเร็จ ถ้ามีการอัพเดทอย่างน้อย 1 จุด
+      if (updatedCircles.length > 0) {
+        toast({
+          title: "🎉 จองสำเร็จ!",
+          description: `จองแปลงที่ ${updatedCircles.map(c => c.id).join(", ")} เป็นจำนวน ${bookingSummary.totalDays} วัน ราคารวม ${bookingSummary.totalPrice} บาท`,
+          duration: 5000,
+        })
+      } else {
+        // ถ้าไม่มีจุดไหนอัพเดทสำเร็จเลย
+        toast({
+          title: "❌ ไม่สามารถจองได้",
+          description: "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง",
+          duration: 5000,
+        })
+      }
+    } catch (error) {
+      console.error("เกิดข้อผิดพลาดในการจอง:", error)
+      toast({
+        title: "❌ เกิดข้อผิดพลาด",
+        description: "ไม่สามารถบันทึกการจองได้ กรุณาลองใหม่อีกครั้ง",
+        duration: 5000,
+      })
+    } finally {
+      // Clear all data
+      setPropertyList([])
+      setBookingData([])
+      setSelectedProperty(null)
+      setShowDetailPanel(false)
+      setShowPropertyList(false)
+      setShowConfirmation(false)
+      setConfirmedProperties([])
     }
   }
 
@@ -552,34 +737,53 @@ export default function PropertyLayout() {
       </div>
 
       {/* Confirm Book Dialog */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <DialogTitle className="text-lg font-semibold">Confirm Book</DialogTitle>
-            <Button variant="ghost" size="sm" onClick={() => setShowConfirmDialog(false)} className="h-6 w-6 p-0">
-            </Button>
+      <Dialog open={showConfirmDialog} onOpenChange={(open) => {
+        // ถ้ากดข้างนอก dialog จะไม่ปิด (ต้องกดปุ่มเท่านั้น)
+        // แต่ถ้าเป็นการเปิด dialog ให้ทำงานปกติ
+        if (open === false && showConfirmDialog === true) {
+          // ไม่ทำอะไร เพื่อป้องกันการปิดเมื่อคลิกข้างนอก
+          return;
+        }
+        setShowConfirmDialog(open);
+      }}>
+        <DialogContent 
+          isShowIconClose={false} 
+          className="max-w-md max-h-[90vh] overflow-hidden flex flex-col bg-gradient-to-b from-white to-blue-50 border-2 border-blue-200 shadow-xl">
+          <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-2 border-b border-blue-200">
+            <DialogTitle className="text-xl font-bold text-blue-700 flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-blue-500" />
+              ยืนยันการจองแปลง
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto p-1">
+            {/* ข้อความยืนยัน */}
+            <div className="bg-blue-100 border-l-4 border-blue-500 p-3 mb-4 rounded-r-md">
+              <p className="text-sm text-blue-800">คุณกำลังจะยืนยันการจองแปลงที่เลือก โปรดตรวจสอบรายละเอียดให้ถูกต้อง</p>
+            </div>
+            
             {/* Summary Table */}
-            <div className="mb-4">
+            <div className="mb-4 bg-white rounded-lg shadow-sm overflow-hidden border border-blue-100">
+              <div className="bg-blue-500 text-white py-2 px-3">
+                <h3 className="text-sm font-medium">รายการแปลงที่เลือก</h3>
+              </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="text-xs font-medium">แปลง</TableHead>
-                    <TableHead className="text-xs font-medium">ราคา</TableHead>
-                    <TableHead className="text-xs font-medium">จำนวนวัน</TableHead>
-                    <TableHead className="text-xs font-medium">รวมเงิน</TableHead>
+                  <TableRow className="bg-blue-50">
+                    <TableHead className="text-xs font-medium text-blue-700">แปลง</TableHead>
+                    <TableHead className="text-xs font-medium text-blue-700">ราคา/วัน</TableHead>
+                    <TableHead className="text-xs font-medium text-blue-700">จำนวนวัน</TableHead>
+                    <TableHead className="text-xs font-medium text-blue-700">รวมเงิน</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {confirmedProperties.map((property) => (
-                    <TableRow key={property.id}>
-                      <TableCell className="text-xs">{property.id}</TableCell>
-                      <TableCell className="text-xs">{Number.parseFloat(property.price).toLocaleString()}.00</TableCell>
-                      <TableCell className="text-xs">4</TableCell>
-                      <TableCell className="text-xs">
-                        {(Number.parseFloat(property.price) * 4).toLocaleString()}.00
+                    <TableRow key={property.id} className="hover:bg-blue-50 transition-colors">
+                      <TableCell className="text-sm font-medium text-blue-800">{property.id}</TableCell>
+                      <TableCell className="text-sm">{Number.parseFloat(property.price).toLocaleString()}.00</TableCell>
+                      <TableCell className="text-sm">{bookingSummary.totalDays}</TableCell>
+                      <TableCell className="text-sm font-medium">
+                        {(Number.parseFloat(property.price) * bookingSummary.totalDays).toLocaleString()}.00
                       </TableCell>
                     </TableRow>
                   ))}
@@ -588,59 +792,65 @@ export default function PropertyLayout() {
             </div>
 
             {/* Detailed Booking List */}
-            <div className="bg-teal-500 text-white p-2 mb-2">
-              <h3 className="text-sm font-medium">สรุปรายการจอง</h3>
-            </div>
-
-            <div className="bg-teal-50 p-2 mb-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs font-medium text-teal-700">แปลง</TableHead>
-                    <TableHead className="text-xs font-medium text-teal-700">วันที่จอง</TableHead>
-                    <TableHead className="text-xs font-medium text-teal-700">จำนวน</TableHead>
-                    <TableHead className="text-xs font-medium text-teal-700">จำนวนเงิน</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {generateBookingDetails.map((detail, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="text-xs">{detail.plotId}</TableCell>
-                      <TableCell className="text-xs">{detail.date}</TableCell>
-                      <TableCell className="text-xs">
-                        {index % 4 === 2 || index % 4 === 3 ? (
-                          <div className="flex items-center gap-1">
-                            <span>0</span>
-                            <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs">i</span>
-                            </div>
-                          </div>
-                        ) : (
-                          "1"
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {index % 4 === 2 || index % 4 === 3 ? "0.00" : `${detail.amount.toLocaleString()}.00`}
-                      </TableCell>
-                    </TableRow>
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-blue-100 mb-4">
+              <div className="bg-blue-500 text-white py-2 px-3">
+                <h3 className="text-sm font-medium">รายละเอียดวันที่จอง</h3>
+              </div>
+              
+              <div className="p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4 text-blue-500" />
+                  <span className="font-medium">วันที่เลือก:</span>
+                  <span className="text-gray-700">
+                    {selectedDates.length > 0 
+                      ? selectedDates.length <= 5
+                        ? selectedDates.map(day => `${day}/${currentMonth}/${currentYear}`).join(", ")
+                        : `${selectedDates[0]}/${currentMonth}/${currentYear} - ${selectedDates[selectedDates.length - 1]}/${currentMonth}/${currentYear} (${selectedDates.length} วัน)`
+                      : "ไม่มีวันที่เลือก"}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="h-4 w-4 text-blue-500" />
+                  <span className="font-medium">จำนวนแปลง:</span>
+                  <span className="text-gray-700">{confirmedProperties.length} แปลง</span>
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 p-3 border-t border-blue-100">
+                <div className="grid grid-cols-2 gap-2">
+                  {confirmedProperties.map((property) => (
+                    <div key={property.id} className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                      <span className="text-xs text-gray-700">แปลงที่ {property.id}</span>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              </div>
             </div>
 
             {/* Total */}
-            <div className="flex justify-between items-center mb-4 p-2 bg-gray-50 rounded">
-              <span className="text-sm font-medium">รวมทั้งหมด :</span>
-              <span className="text-lg font-bold text-red-600">{totalBookingAmount.toLocaleString()}.00 บาท</span>
+            <div className="flex justify-between items-center mb-4 p-4 bg-blue-600 rounded-lg shadow-md">
+              <span className="text-sm font-medium text-white">รวมทั้งหมด:</span>
+              <span className="text-xl font-bold text-white">{totalBookingAmount.toLocaleString()}.00 บาท</span>
             </div>
 
             {/* Confirm Button */}
-            <Button
-              onClick={handleConfirmBooking}
-              className="w-full bg-teal-500 hover:bg-teal-600 text-white rounded-lg"
-            >
-              ยืนยันการจอง
-            </Button>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                onClick={() => setShowConfirmDialog(false)}
+                variant="outline"
+                className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={handleConfirmBooking}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all duration-200 transform hover:translate-y-[-2px]"
+              >
+                ยืนยันการจอง
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -649,18 +859,25 @@ export default function PropertyLayout() {
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header with notification */}
         <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="p-3 lg:p-4 flex items-center justify-between">
+          <div className="p-3 lg:p-4 flex items-center justify-start gap-4">
             <div className="flex items-center gap-3">
               <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-200">
                 <Info className="w-3 h-3 mr-1" />
                 แสดงทั้งหมด
               </Badge>
-              <span className="text-sm text-gray-600">อัพเดทล่าสุด: วันนี้ 14:30</span>
+              <span className="text-sm text-gray-600">อัพเดทล่าสุด: {lastRefreshTime.toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-green-600 border-green-200">
-                ออนไลน์
-              </Badge>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefreshData} 
+                disabled={isRefreshing}
+                className="flex items-center gap-1 text-xs mr-2"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                รีเฟรช
+              </Button>
             </div>
           </div>
         </div>
@@ -675,6 +892,7 @@ export default function PropertyLayout() {
                 onFilterChange={handleMapFilterChange}
                 selectedPropertyIds={selectedPropertyIds}
                 onExternalCircleUpdate={externalCircleUpdateRef}
+                onCirclesChange={setCircles}
               />
             </div>
           </div>
@@ -708,19 +926,11 @@ export default function PropertyLayout() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors">
-                    <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-blue-600 shadow-sm"></div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">เลือกแล้ว</span>
-                      <p className="text-xs text-gray-500">Selected</p>
-                    </div>
-                  </div>
-
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 transition-colors">
                     <div className="w-5 h-5 bg-red-400 rounded-full border-2 border-red-500 shadow-sm"></div>
                     <div>
                       <span className="text-sm font-medium text-gray-800">ขายแล้ว</span>
-                      <p className="text-xs text-gray-500">Sold</p>
+                      <p className="text-xs text-gray-500">Booked</p>
                     </div>
                   </div>
 
@@ -728,7 +938,7 @@ export default function PropertyLayout() {
                     <div className="w-5 h-5 bg-yellow-400 rounded-full border-2 border-yellow-500 shadow-sm"></div>
                     <div>
                       <span className="text-sm font-medium text-gray-800">จอง</span>
-                      <p className="text-xs text-gray-500">Reserved</p>
+                      <p className="text-xs text-gray-500">Pending</p>
                     </div>
                   </div>
                 </div>
@@ -757,19 +967,6 @@ export default function PropertyLayout() {
                   <CardTitle className="text-base text-gray-800">รายการแปลง</CardTitle>
                   <p className="text-sm text-gray-500">Property List</p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowPropertyList(false)
-                    // ล้างการเลือกทั้งหมดเมื่อปิด Property List
-                    setPropertyList([])
-                    setSelectedPropertyIds(new Set())
-                  }}
-                  className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
               </CardHeader>
 
               <CardContent className="p-4">
@@ -839,7 +1036,7 @@ export default function PropertyLayout() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowDetailPanel(false)}
+                  onClick={handleCloseDetailPanel}
                   className="h-8 w-8 p-0 hover:bg-teal-300 rounded-full"
                 >
                   <X className="w-4 h-4" />
@@ -999,6 +1196,12 @@ export default function PropertyLayout() {
                               day === new Date().getDate() &&
                               currentMonth === new Date().getMonth() + 1 &&
                               currentYear === new Date().getFullYear()
+                            
+                            // ตรวจสอบว่าเป็นวันที่ผ่านมาแล้ว
+                            const today = new Date()
+                            const selectedDate = new Date(currentYear, currentMonth - 1, day)
+                            const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+                            const isPastDate = isCurrentMonth && selectedDate < todayStart
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
@@ -1008,14 +1211,17 @@ export default function PropertyLayout() {
                               <button
                                 key={i}
                                 onClick={() => handleDateClick(day)}
-                                className={`text-xs text-center p-1 rounded transition-all duration-200 hover:scale-110 ${
-                                  isSelected
-                                    ? "bg-blue-500 text-white shadow-md transform scale-105"
-                                    : isRangeStart
-                                      ? "bg-blue-300 text-white"
-                                      : isToday
-                                        ? "bg-yellow-200 text-gray-800 font-bold"
-                                        : "text-gray-700 hover:bg-blue-100"
+                                disabled={isPastDate}
+                                className={`text-xs text-center p-1 rounded transition-all duration-200 ${
+                                  isPastDate
+                                    ? "text-gray-300 cursor-not-allowed bg-gray-50"
+                                    : isSelected
+                                      ? "bg-blue-500 text-white shadow-md transform scale-105 hover:scale-110"
+                                      : isRangeStart
+                                        ? "bg-blue-300 text-white hover:scale-110"
+                                        : isToday
+                                          ? "bg-yellow-200 text-gray-800 font-bold hover:scale-110"
+                                          : "text-gray-700 hover:bg-blue-100 hover:scale-110"
                                 }`}
                               >
                                 {day}
@@ -1134,20 +1340,13 @@ export default function PropertyLayout() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-3 pt-4">
+                    <div className="pt-4">
                       <Button
                         onClick={handleConfirm}
                         disabled={bookingData.length === 0}
-                        className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                        className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50"
                       >
                         Confirm
-                      </Button>
-                      <Button
-                        onClick={handlePayment}
-                        disabled={isProcessingPayment || bookingData.length === 0}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-                      >
-                        {isProcessingPayment ? "กำลังดำเนินการ..." : "Payment"}
                       </Button>
                     </div>
                   </div>
@@ -1156,14 +1355,16 @@ export default function PropertyLayout() {
             </Card>
           </div>
 
-          {/* Detail Panel Toggle Button */}
-          <Button
-            onClick={() => setShowDetailPanel(!showDetailPanel)}
-            className={`absolute top-4 transition-all duration-300 h-12 w-12 rounded-full bg-green-500 hover:bg-green-600 shadow-lg z-10 ${showDetailPanel ? "right-[25rem]" : showPropertyList ? "right-[25rem]" : "right-4"}`}
-            size="sm"
-          >
-            <Menu className="w-5 h-5" />
-          </Button>
+          {/* Detail Panel Toggle Button - แสดงเฉพาะเมื่อไม่มีกรอบใดแสดงอยู่ */}
+          {!showPropertyList && !showDetailPanel && (
+            <Button
+              onClick={() => setShowDetailPanel(!showDetailPanel)}
+              className="absolute top-4 right-4 transition-all duration-300 h-12 w-12 rounded-full bg-green-500 hover:bg-green-600 shadow-lg z-10"
+              size="sm"
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
+          )}
         </div>
       </div>
       </div>
