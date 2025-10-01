@@ -19,7 +19,7 @@ export interface IResponseGetUnitMatrixController {
   x: number;
   y: number;
   m_price: number;
-  m_price_desc: string;
+  d_price: number;
 }
 export const getUnitMatrixController = async (payload: IPayloadGetUnitMatrixController): Promise<IResponse<IResponseGetUnitMatrixController[]>> => {
   try{
@@ -63,10 +63,10 @@ export const getUnitMatrixController = async (payload: IPayloadGetUnitMatrixCont
         unit_number: item.UnitNumber,
         status: item.UnitStatus,
         status_desc: status_desc,
-        x: item.X,
-        y: item.Y,
+        x: isNaN(item.X) ? null : Number(item.X),
+        y: isNaN(item.Y) ? null : Number(item.Y),
         m_price: item.M_Price,
-        m_price_desc: "",
+        d_price: item.D_Price,
       } as IResponseGetUnitMatrixController
     }) || [];
 
