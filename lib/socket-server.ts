@@ -29,6 +29,8 @@ let socketBookings: Map<string, Set<string>> = new Map();
 let eventDebounce: Map<string, number> = new Map();
 // Event deduplication timeout (ms)
 const DEBOUNCE_TIMEOUT = 100;
+// Booking timeout in milliseconds (10 minutes)
+const BOOKING_TIMEOUT = 10 * 60 * 1000;
 
 // Periodic cleanup of old debounce entries (every 5 minutes)
 setInterval(() => {
@@ -45,6 +47,55 @@ setInterval(() => {
     console.log(`🧹 Cleaned up debounce map, ${eventDebounce.size} entries remaining`);
   }
 }, 5 * 60 * 1000); // Every 5 minutes
+
+// Function to check and release expired bookings
+const checkExpiredBookings = () => {
+  if (!globalSocketIO) return;
+  
+  const now = Date.now();
+  const expiredBookings: string[] = [];
+  
+  // Check each booking for expiration
+  temporaryBookings.forEach((booking, circleId) => {
+    const bookingAge = now - booking.bookedAt;
+    
+    // If booking is older than 10 minutes, mark it as expired
+    if (bookingAge > BOOKING_TIMEOUT) {
+      expiredBookings.push(circleId);
+      console.log(`⏰ Booking expired: ${circleId} by ${booking.bookedBy} (age: ${Math.floor(bookingAge/1000)}s)`);
+    }
+  });
+  
+  // Process expired bookings
+  if (expiredBookings.length > 0) {
+    const releasedCircles = expiredBookings.map(circleId => {
+      const booking = temporaryBookings.get(circleId);
+      
+      // Remove from socket tracking
+      if (booking && booking.socketId && socketBookings.has(booking.socketId)) {
+        socketBookings.get(booking.socketId)!.delete(circleId);
+      }
+      
+      // Remove from temporary bookings
+      temporaryBookings.delete(circleId);
+      
+      // Create released circle object
+      return {
+        id: circleId,
+        status: 'available',
+        bookedBy: undefined,
+        bookedAt: undefined
+      };
+    });
+    
+    // Broadcast released circles to all clients
+    globalSocketIO.emit("bookingsReleased", releasedCircles);
+    console.log(`⏰ Released ${releasedCircles.length} expired bookings: ${expiredBookings.join(", ")}`);
+  }
+};
+
+// Check for expired bookings every minute
+setInterval(checkExpiredBookings, 60 * 1000);
 
 // Function to safely check and handle port conflicts
 const checkPortAvailability = async (port: number): Promise<boolean> => {

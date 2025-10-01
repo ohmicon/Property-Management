@@ -46,14 +46,14 @@
       "x": 500,
       "y": 200,
       "r": 20,
-      "status": "available",
+      "status": "booked",
       "id": "B01"
     },
     {
       "x": 500,
       "y": 300,
       "r": 20,
-      "status": "available",
+      "status": "booked",
       "id": "B02"
     },
     {
@@ -88,7 +88,7 @@
       "x": 700,
       "y": 400,
       "r": 20,
-      "status": "available",
+      "status": "booked",
       "id": "C03"
     },
     {

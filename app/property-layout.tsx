@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +20,9 @@ interface Property {
   id: string
   price: string
   status: "available" | "booked" | "pending"
+  bookedAt?: number
+  bookedBy?: string
+  remainingTime?: number
 }
 
 interface BookingDetail {
@@ -55,6 +58,94 @@ export default function PropertyLayout() {
   
   // State สำหรับ circles จาก CanvasMap
   const [circles, setCircles] = useState<Circle[]>([])
+  
+  // State for tracking remaining booking time
+  const [remainingTimes, setRemainingTimes] = useState<Record<string, number>>({})
+  
+  // Update countdown timers every second
+  useEffect(() => {
+    // Skip if no pending bookings
+    if (Object.keys(remainingTimes).length === 0) return
+    
+    const intervalId = setInterval(() => {
+      setRemainingTimes(prevTimes => {
+        const updatedTimes: Record<string, number> = {}
+        let hasChanges = false
+        
+        // Update each timer
+        Object.entries(prevTimes).forEach(([id, time]) => {
+          // Reduce by 1 second
+          const newTime = Math.max(0, time - 1000)
+          updatedTimes[id] = newTime
+          
+          // Check if any timer reached zero
+          if (time > 0 && newTime === 0) {
+            hasChanges = true
+          }
+        })
+        
+        return hasChanges || Object.values(updatedTimes).some(t => t > 0) ? updatedTimes : prevTimes
+      })
+    }, 1000)
+    
+    return () => clearInterval(intervalId)
+  }, [remainingTimes])
+  
+  // Check for expired bookings and update their status
+  useEffect(() => {
+    if (Object.keys(remainingTimes).length === 0) return
+    
+    const expiredPropertyIds: string[] = []
+    
+    // ตรวจสอบว่ามีการจองที่หมดเวลาหรือไม่
+    Object.entries(remainingTimes).forEach(([id, time]) => {
+      if (time <= 0) {
+        expiredPropertyIds.push(id)
+      }
+    })
+    
+    // ถ้ามีการจองที่หมดเวลา
+    if (expiredPropertyIds.length > 0) {
+      console.log('⏰ พบการจองที่หมดเวลา:', expiredPropertyIds)
+      
+      // ลบออกจาก remainingTimes
+      setRemainingTimes(prev => {
+        const newTimes = { ...prev }
+        expiredPropertyIds.forEach(id => {
+          delete newTimes[id]
+        })
+        return newTimes
+      })
+      
+      // ลบออกจาก selectedPropertyIds
+      setSelectedPropertyIds(prev => {
+        const newSet = new Set(prev)
+        expiredPropertyIds.forEach(id => {
+          newSet.delete(id)
+        })
+        return newSet
+      })
+      
+      // อัพเดต propertyList และ bookingData
+      setPropertyList(prevList => {
+        const filteredList = prevList.filter(item => !expiredPropertyIds.includes(item.id))
+        setBookingData(filteredList) // อัพเดต bookingData ด้วย
+        
+        if (filteredList.length === 0) {
+          setShowPropertyList(false)
+        }
+        
+        return filteredList
+      })
+      
+      // แจ้งเตือนผู้ใช้
+      toast({
+        title: "การจองหมดเวลา",
+        description: `การจองแปลง ${expiredPropertyIds.join(', ')} หมดเวลาแล้ว`,
+        variant: "destructive"
+      })
+    }
+  }, [remainingTimes])
   
   // ฟังก์ชันสำหรับรีเฟรชข้อมูล
   const handleRefreshData = async () => {
@@ -134,7 +225,7 @@ export default function PropertyLayout() {
       toast({
         title: "❌ เกิดข้อผิดพลาด",
         description: "ไม่สามารถรีเฟรชข้อมูลได้ กรุณาลองใหม่อีกครั้ง",
-        duration: 3000
+        duration: 3000,
       })
     } finally {
       setIsRefreshing(false)
@@ -302,79 +393,75 @@ export default function PropertyLayout() {
       properties: bookingData.length,
     }
   }, [bookingData, selectedDates])
-
-  const [showConfirmation, setShowConfirmation] = useState(false)
-  const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   
-  // Sync propertyList กับ circles ที่มีสถานะ pending และถูกเลือกโดย user
-  useEffect(() => {
-    // หาจุดที่มีสถานะ pending และถูกเลือกโดย user ปัจจุบัน
-    const currentUser = getCurrentUsername()
-    console.log('🔄 Syncing propertyList with circles - current user:', currentUser)
-    console.log('🔄 Selected property IDs:', Array.from(selectedPropertyIds))
-    
-    const pendingCircles = circles.filter(circle => 
-      circle.status === 'pending' && 
-      circle.bookedBy === currentUser &&
-      selectedPropertyIds.has(circle.id)
-    )
-    
-    console.log('🔄 Found pending circles for current user:', pendingCircles.length)
-    
-    // สร้าง propertyList จาก pending circles
-    const newPropertyList: Property[] = pendingCircles.map(circle => ({
-      id: circle.id,
-      price: Math.floor(Math.random() * 1000 + 1000).toString(),
-      status: circle.status,
-    }))
-    
-    console.log('🔄 New property list:', newPropertyList)
-    
-    // อัปเดต propertyList และ bookingData พร้อมกัน
-    setPropertyList(newPropertyList)
-    setBookingData(newPropertyList)
-    
-    // แสดง Property List ถ้ามีจุดที่เลือก
-    if (newPropertyList.length > 0) {
-      setShowPropertyList(true)
-    } else if (showPropertyList) {
-      // ถ้าไม่มีจุดที่เลือกแล้ว และกำลังแสดง Property List อยู่ ให้ซ่อน
-      setShowPropertyList(false)
-    }
-  }, [circles, selectedPropertyIds, showPropertyList])
-
-  // Generate detailed booking data
-  const generateBookingDetails = useMemo(() => {
-    const details: BookingDetail[] = []
-    
-    // ใช้วันที่ที่ผู้ใช้เลือกจริงๆ แทนวันที่คงที่
-    const selectedDateStrings = selectedDates.map(day => `${day} ${getMonthName(currentMonth)} ${currentYear}`)
-    
-    // ถ้าไม่มีวันที่เลือก ให้ใช้วันนี้เป็นค่าเริ่มต้น
-    const bookingDates = selectedDateStrings.length > 0 ? selectedDateStrings : [`${new Date().getDate()} ${getMonthName(new Date().getMonth() + 1)} ${new Date().getFullYear()}`]
-
-    confirmedProperties.forEach((property) => {
-      bookingDates.forEach((date) => {
-        details.push({
-          plotId: property.id,
-          date: date,
-          amount: Number.parseFloat(property.price.replace(",", "")),
-        })
-      })
-    })
-
-    return details
-  }, [confirmedProperties, selectedDates, currentMonth, currentYear])
-
-  // คำนวณยอดรวมทั้งหมดโดยใช้ bookingSummary.totalDays แทน
+  // Calculate total booking amount for confirmation dialog
   const totalBookingAmount = useMemo(() => {
-    return confirmedProperties.reduce((sum, property) => {
-      return sum + (Number.parseFloat(property.price.replace(",", "")) * bookingSummary.totalDays)
+    return bookingData.reduce((sum, property) => {
+      return sum + Number.parseFloat(property.price.replace(",", "")) * bookingSummary.totalDays
     }, 0)
-  }, [confirmedProperties, bookingSummary.totalDays])
-
-  const handlePropertyClick = (property: Circle) => {
+  }, [bookingData, bookingSummary.totalDays])
+  
+  // Handle removing a property from selection
+  const handleRemoveProperty = (propertyId: string) => {
+    // Remove from selectedPropertyIds
+    setSelectedPropertyIds(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(propertyId)
+      return newSet
+    })
+    
+    // Remove from propertyList
+    setPropertyList((prevList) => {
+      const filteredList = prevList.filter((item) => item.id !== propertyId)
+      if (filteredList.length === 0) {
+        setShowPropertyList(false)
+      }
+      // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
+      setBookingData(filteredList)
+      return filteredList
+    })
+    
+    // Remove from remainingTimes
+    setRemainingTimes(prev => {
+      const newTimes = { ...prev }
+      delete newTimes[propertyId]
+      return newTimes
+    })
+    
+    // ค้นหาจุดที่ต้องการยกเลิกจาก circles ที่มีอยู่
+    const circleToCancel = circles.find(circle => circle.id === propertyId)
+    
+    // ส่งสัญญาณไปยัง Canvas Map เพื่อยกเลิกการจองโดยตรง
+    const cancelledProperty: Circle = circleToCancel ? {
+      ...circleToCancel, // รักษาตำแหน่งและขนาดจริง
+      status: 'available' as const,
+      bookedBy: undefined,
+      bookedAt: undefined
+    } : {
+      // ถ้าไม่พบจุดในข้อมูลปัจจุบัน ใช้ค่า default
+      id: propertyId,
+      x: 100,
+      y: 100,
+      r: 20,
+      status: 'available' as const,
+      bookedBy: undefined,
+      bookedAt: undefined
+    }
+    
+    // อัปเดต Canvas Map โดยตรงผ่าน external update handler
+    // (การเรียก broadcastCircleUpdate จะทำใน external handler แล้ว)
+    if (externalCircleUpdateRef.current) {
+      externalCircleUpdateRef.current(cancelledProperty)
+    }
+    
+    toast({
+      title: "ยกเลิกการเลือก",
+      description: `ยกเลิกการเลือกจุด ${propertyId} แล้ว`,
+    })
+  }
+  
+  // Handle property click function - handles selecting and deselecting properties
+  const handlePropertyClick = useCallback((property: Circle) => {
     // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
     if (selectedPropertyIds.has(property.id)) {
       // ถ้าถูกเลือกแล้ว ให้ยกเลิกการเลือก
@@ -391,73 +478,57 @@ export default function PropertyLayout() {
     // เพิ่ม ID เข้าไปใน selectedPropertyIds
     setSelectedPropertyIds(prev => new Set([...prev, property.id]))
 
-    onSelectBooking(property)
+    if (onSelectBooking) {
+      onSelectBooking(property)
+    }
 
     setShowPropertyList(true)
     // ปิดกรอบการจองเมื่อแสดงรายการแปลง
     setShowDetailPanel(false)
-  }
+  }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
 
-  const handleRemoveProperty = (propertyId: string) => {
-    console.log('🗑️ Removing property:', propertyId)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  
+  // Sync propertyList กับ circles ที่มีสถานะ pending และถูกเลือกโดย user
+  useEffect(() => {
+    // หาจุดที่มีสถานะ pending และถูกเลือกโดย user ปัจจุบัน
+    const currentUser = getCurrentUsername()
+    const pendingCircles = circles.filter(circle => 
+      circle.status === 'pending' && 
+      circle.bookedBy === currentUser &&
+      selectedPropertyIds.has(circle.id)
+    )
     
-    // ลบจาก propertyList และตรวจสอบว่าต้องซ่อน Property List หรือไม่
-    setPropertyList((prevList) => {
-      const filteredList = prevList.filter((item) => item.id !== propertyId)
-      console.log('🗑️ Updated property list:', filteredList)
-      
-      // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
-      setBookingData(filteredList)
-      
-      if (filteredList.length === 0) {
-        console.log('🗑️ No properties left, hiding property list')
-        setShowPropertyList(false)
+    const newPropertyList: Property[] = pendingCircles.map(circle => ({
+      id: circle.id,
+      price: Math.floor(Math.random() * 1000 + 1000).toString(),
+      status: circle.status,
+      bookedAt: circle.bookedAt,
+      bookedBy: circle.bookedBy,
+      remainingTime: circle.bookedAt ? 10 * 60 * 1000 - (Date.now() - circle.bookedAt) : undefined
+    }))
+    
+    setPropertyList(newPropertyList)
+    // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
+    setBookingData(newPropertyList)
+    
+    if (newPropertyList.length > 0) {
+      setShowPropertyList(true)
+    }
+    
+    // Update remaining times for countdown display
+    const times: Record<string, number> = {}
+    pendingCircles.forEach(circle => {
+      if (circle.bookedAt) {
+        const elapsed = Date.now() - circle.bookedAt
+        const remaining = Math.max(0, 10 * 60 * 1000 - elapsed) // 10 minutes in milliseconds
+        times[circle.id] = remaining
       }
-      
-      return filteredList
     })
-    
-    // ลบจาก selectedPropertyIds เพื่อให้สามารถคลิกได้อีก
-    setSelectedPropertyIds(prev => {
-      const newSet = new Set(prev)
-      newSet.delete(propertyId)
-      console.log('🗑️ Updated selected property IDs:', Array.from(newSet))
-      return newSet
-    })
-    
-    // ค้นหาจุดที่ต้องการยกเลิกจาก circles ที่มีอยู่
-    const circleToCancel = circles.find(circle => circle.id === propertyId)
-    
-    // ส่งสัญญาณไปยัง Canvas Map เพื่อยกเลิกการจองโดยตรง
-    const cancelledProperty: Circle = circleToCancel ? {
-      ...circleToCancel, // รักษาตำแหน่งและขนาดจริง
-      status: 'available',
-      bookedBy: undefined,
-      bookedAt: undefined
-    } : {
-      // ถ้าไม่พบจุดในข้อมูลปัจจุบัน ใช้ค่า default
-      id: propertyId,
-      x: 100,
-      y: 100,
-      r: 20,
-      status: 'available' as const,
-      bookedBy: undefined,
-      bookedAt: undefined
-    }
-    
-    console.log('🗑️ Sending cancelled property to CanvasMap:', cancelledProperty);
-    
-    // อัปเดต Canvas Map โดยตรงผ่าน external update handler
-    // (การเรียก broadcastCircleUpdate จะทำใน external handler แล้ว)
-    if (externalCircleUpdateRef.current) {
-      externalCircleUpdateRef.current(cancelledProperty)
-    }
-    
-    toast({
-      title: "ยกเลิกการเลือก",
-      description: `ยกเลิกการเลือกจุด ${propertyId} แล้ว`,
-    })
-  }
+    setRemainingTimes(times)
+  }, [circles, selectedPropertyIds])
 
   const handleViewDetails = () => {
     // ส่งข้อมูล propertyList ไปที่ booking และตรวจสอบว่ามีข้อมูลหรือไม่
@@ -867,7 +938,7 @@ export default function PropertyLayout() {
               </Badge>
               <span className="text-sm text-gray-600">อัพเดทล่าสุด: {lastRefreshTime.toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
-            <div className="flex items-center gap-2">
+            {/* <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -878,7 +949,7 @@ export default function PropertyLayout() {
                 <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 รีเฟรช
               </Button>
-            </div>
+            </div> */}
           </div>
         </div>
 
@@ -981,31 +1052,44 @@ export default function PropertyLayout() {
                     propertyList.map((property) => (
                       <div
                         key={property.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                        className="flex flex-col p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
                       >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-3 h-3 rounded-full ${
-                              property.status === "available"
-                                ? "bg-green-400"
-                                : property.status === "pending"
-                                  ? "bg-yellow-400"
-                                  : "bg-red-400"
-                            }`}
-                          ></div>
-                          <span className="text-sm font-medium text-gray-800">แปลงที่ {property.id}</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-3 h-3 rounded-full ${
+                                property.status === "available"
+                                  ? "bg-green-400"
+                                  : property.status === "pending"
+                                    ? "bg-yellow-400"
+                                    : "bg-red-400"
+                              }`}
+                            ></div>
+                            <span className="text-sm font-medium text-gray-800">แปลงที่ {property.id}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600">{property.price} บาท</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveProperty(property.id)}
+                              className="h-6 w-6 p-0 hover:bg-red-100 text-red-500 hover:text-red-700"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-600">{property.price} บาท</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveProperty(property.id)}
-                            className="h-6 w-6 p-0 hover:bg-red-100 text-red-500 hover:text-red-700"
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        </div>
+                        
+                        {property.status === "pending" && remainingTimes[property.id] !== undefined && (
+                          <div className="mt-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">เวลาที่เหลือ:</span>
+                            </div>
+                            <div className={`px-2 py-1 rounded text-xs font-medium ${remainingTimes[property.id] < 60000 ? 'bg-red-100 text-red-800 animate-pulse' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {Math.floor(remainingTimes[property.id] / 60000)}:{String(Math.floor((remainingTimes[property.id] % 60000) / 1000)).padStart(2, '0')}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}

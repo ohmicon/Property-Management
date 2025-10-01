@@ -490,13 +490,13 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       // Draw username for pending bookings with different colors
       if (circle.status === "pending" && circle.bookedBy) {
         const isOwnBooking = circle.bookedBy === currentUsername
-        ctx.fillStyle = isOwnBooking ? "#FFD700" : "#FFA500" // Gold for own, orange for others
+        ctx.fillStyle = isOwnBooking ? "#473f3e" : "#786665" // Gold for own, orange for others
         ctx.font = `${10 / scaleRef.current}px Arial`
         ctx.fillText(circle.bookedBy, circle.x, circle.y + 8 / scaleRef.current)
         
         // Add indicator for own bookings
         if (isOwnBooking) {
-          ctx.fillStyle = "#FFD700"
+          ctx.fillStyle = "#473f3e"
           ctx.font = `${8 / scaleRef.current}px Arial`
           ctx.fillText("(คุณ)", circle.x, circle.y + 18 / scaleRef.current)
         }
@@ -627,16 +627,50 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
     dragStartRef.current = { x: e.clientX, y: e.clientY }
   }, [])
 
+  // Check if mouse is over any circle
+  const isMouseOverCircle = useCallback(
+    (mouseX: number, mouseY: number): boolean => {
+      const canvas = canvasRef.current
+      if (!canvas) return false
+
+      // Convert screen coordinates to world coordinates
+      const worldX = (mouseX - offsetRef.current.x) / scaleRef.current
+      const worldY = (mouseY - offsetRef.current.y) / scaleRef.current
+
+      // Check if mouse is over any circle
+      return circles.some(circle => {
+        const distance = Math.sqrt((worldX - circle.x) ** 2 + (worldY - circle.y) ** 2)
+        return distance <= circle.r
+      })
+    },
+    [circles]
+  )
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!isDraggingRef.current) return
+      const canvas = canvasRef.current
+      if (!canvas) return
 
-      offsetRef.current.x += e.clientX - dragStartRef.current.x
-      offsetRef.current.y += e.clientY - dragStartRef.current.y
-      dragStartRef.current = { x: e.clientX, y: e.clientY }
-      draw()
+      if (isDraggingRef.current) {
+        // Handle dragging
+        offsetRef.current.x += e.clientX - dragStartRef.current.x
+        offsetRef.current.y += e.clientY - dragStartRef.current.y
+        dragStartRef.current = { x: e.clientX, y: e.clientY }
+        draw()
+      } else {
+        // Check if mouse is over any circle and update cursor
+        const rect = canvas.getBoundingClientRect()
+        const mouseX = e.clientX - rect.left
+        const mouseY = e.clientY - rect.top
+        
+        if (isMouseOverCircle(mouseX, mouseY)) {
+          canvas.style.cursor = 'pointer'
+        } else {
+          canvas.style.cursor = 'grab'
+        }
+      }
     },
-    [draw],
+    [draw, isMouseOverCircle]
   )
 
   const handleMouseUp = useCallback(() => {
@@ -891,7 +925,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       {/* Canvas */}
       <canvas
         ref={canvasRef}
-        className={`w-full h-full cursor-grab active:cursor-grabbing border-2 border-gray-300 ${
+        className={`w-full h-full border-2 border-gray-300 ${
           isDragOver ? "border-blue-500 border-dashed" : ""
         }`}
         onMouseDown={handleMouseDown}
