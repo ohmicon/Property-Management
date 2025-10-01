@@ -18,6 +18,7 @@ import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 
 interface Property {
   id: string
+  name: string;
   price: string
   status: "available" | "booked" | "pending"
   bookedAt?: number
@@ -521,6 +522,7 @@ export default function PropertyLayout() {
     } : {
       // ถ้าไม่พบจุดในข้อมูลปัจจุบัน ใช้ค่า default
       id: propertyId,
+      name: '',
       x: 100,
       y: 100,
       r: 20,
@@ -601,6 +603,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
     
     const newPropertyList: Property[] = pendingCircles.map(circle => ({
       id: circle.id,
+      name: circle.name,
       price: Math.floor(Math.random() * 1000 + 1000).toString(),
       status: circle.status,
       bookedAt: circle.bookedAt,
@@ -886,7 +889,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                         key={property.id}
                         className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                       >
-                        <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.id}</span>
+                        <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.name}</span>
                         <div className="flex gap-2">
                             <span className="text-sm text-gray-600">{property.price} บาท</span>
                             <Button
@@ -958,7 +961,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                 <TableBody>
                   {confirmedProperties.map((property) => (
                     <TableRow key={property.id} className="hover:bg-blue-50 transition-colors">
-                      <TableCell className="text-sm font-medium text-blue-800">{property.id}</TableCell>
+                      <TableCell className="text-sm font-medium text-blue-800">{property.name}</TableCell>
                       <TableCell className="text-sm">{Number.parseFloat(property.price).toLocaleString()}.00</TableCell>
                       <TableCell className="text-sm">{bookingSummary.totalDays}</TableCell>
                       <TableCell className="text-sm font-medium">
@@ -1001,7 +1004,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                   {confirmedProperties.map((property) => (
                     <div key={property.id} className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                      <span className="text-xs text-gray-700">แปลงที่ {property.id}</span>
+                      <span className="text-xs text-gray-700">แปลงที่ {property.name}</span>
                     </div>
                   ))}
                 </div>
@@ -1203,7 +1206,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                                     : "bg-red-400"
                               }`}
                             ></div>
-                            <span className="text-sm font-medium text-gray-800">แปลงที่ {property.id}</span>
+                            <span className="text-sm font-medium text-gray-800">แปลงที่ {property.name}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-600">{property.price} บาท</span>
@@ -1275,7 +1278,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                         <div className="space-y-1">
                           {bookingData.map((property) => (
                             <div key={property.id} className="flex justify-between text-xs">
-                              <span>แปลงที่ {property.id}</span>
+                              <span>แปลงที่ {property.name}</span>
                               <span>{property.price} บาท/วัน</span>
                             </div>
                           ))}

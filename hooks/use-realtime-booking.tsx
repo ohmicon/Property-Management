@@ -60,7 +60,7 @@ export function useRealtimeBooking() {
         console.log('📊 Server info:', serverInfo);
         
         // Connect to the Socket.IO server
-        const socketUrl = `http://localhost:${serverInfo.port || 8080}`;
+        const socketUrl = `${process.env.NEXT_PUBLIC_SOCKET_HOST}:${serverInfo.port || 8080}`;
         // const socketUrl = `https://n05txbss-8080.asse.devtunnels.ms`;
         console.log(`🔌 Attempting to connect to: ${socketUrl}`);
         
