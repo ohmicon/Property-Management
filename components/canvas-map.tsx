@@ -8,6 +8,7 @@ import { getCircles, updateCircleStatus } from "@/lib/api/circles"
 import { getOrCreateUsername, getCurrentUsername } from "@/lib/user-utils"
 import { toast } from "sonner"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
+import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
 
 export interface Circle {
   x: number
@@ -15,6 +16,7 @@ export interface Circle {
   r: number
   status: "available" | "booked" | "pending"
   id: string
+  name: string;
   bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
   bookedAt?: number // Timestamp ของการจอง
 }
@@ -124,7 +126,26 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
     const loadCircles = async () => {
       try {
         setIsLoadingCircles(true)
-        const circlesData = await getCircles()
+        // const circlesData = await getCircles()
+
+        // test connect rental
+        const unitMatrixData = await getUnitMatrixApi({
+          project_id: 'M004',
+          year: 2025,
+          month: 9,
+          day: 0
+        })
+
+        const circlesData = unitMatrixData.data?.map((item) => {
+          return {
+            id: item.unit_id,
+            r: 20,
+            status: item.status_desc.toLocaleLowerCase(),
+            x: item.x,
+            y: item.y,
+            name: item.unit_number
+          } as Circle
+        }) || []
         
         // Request current temporary bookings state from server
         if (socket && socket.connected) {
@@ -485,7 +506,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       ctx.fillStyle = "white"
       ctx.font = `${12 / scaleRef.current}px Arial`
       ctx.textAlign = "center"
-      ctx.fillText(circle.id, circle.x, circle.y - 8 / scaleRef.current)
+      ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
       
       // Draw username for pending bookings with different colors
       if (circle.status === "pending" && circle.bookedBy) {

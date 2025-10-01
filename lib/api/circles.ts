@@ -1,11 +1,5 @@
 import { Circle } from "@/components/canvas-map";
-
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-}
+import { ApiResponse } from "../axios";
 
 // ดึงข้อมูล circles ทั้งหมด
 export async function getCircles(): Promise<Circle[]> {
