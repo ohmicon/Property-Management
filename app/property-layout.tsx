@@ -276,7 +276,6 @@ export default function PropertyLayout() {
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
     if (selectedDate < todayStart) {
-      // ไม่สามารถเลือกวันที่ผ่านมาแล้ว
       return
     }
 
@@ -288,7 +287,6 @@ export default function PropertyLayout() {
         const start = Math.min(rangeStart, day)
         const end = Math.max(rangeStart, day)
         const range = Array.from({ length: end - start + 1 }, (_, i) => start + i)
-        // กรองเฉพาะวันที่ไม่ผ่านมาแล้ว
         const validRange = range.filter(d => {
           const checkDate = new Date(currentYear, currentMonth - 1, d)
           return checkDate >= todayStart
@@ -296,11 +294,26 @@ export default function PropertyLayout() {
         setSelectedDates(validRange)
         setRangeStart(null)
         setIsSelectingRange(false)
+        setShowConfirmation(true)
+        setConfirmedProperties([...bookingData])
       }
     } else {
-      setSelectedDates((prev) =>
-        prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b),
-      )
+      setSelectedDates((prev) => {
+        const newDates = prev.includes(day)
+          ? prev.filter((d) => d !== day)
+          : [...prev, day].sort((a, b) => a - b)
+        
+        // Show confirmation only if there are dates selected
+        if (newDates.length > 0) {
+          setShowConfirmation(true)
+          setConfirmedProperties([...bookingData])
+        } else {
+          // Just clear the confirmation without showing dialog
+          setShowConfirmation(false)
+          setConfirmedProperties([])
+        }
+        return newDates
+      })
     }
   }
 
@@ -326,6 +339,74 @@ export default function PropertyLayout() {
     setSelectedDates([])
     setRangeStart(null)
     setIsSelectingRange(false)
+    // Clear all selections
+    setShowConfirmation(false)
+    setConfirmedProperties([])
+    setPropertyList([])
+    setBookingData([])
+    setSelectedPropertyIds(new Set())
+    setShowDetailPanel(false)
+  }
+
+  const handleClearAllDates = () => {
+    setShowClearConfirmDialog(true)
+  }
+
+  const confirmClearAllDates = async () => {
+    try {
+      // Show loading toast
+      toast({
+        title: "⏳ กำลังยกเลิกการเลือกแปลง...",
+        description: "กรุณารอสักครู่",
+      })
+
+      // Cancel all selected properties via API
+      for (const property of propertyList) {
+        try {
+          // Call API to update circle status back to available
+          await updateCircleStatus(property.id, 'available')
+          
+          // Update circle in UI through external handler
+          if (externalCircleUpdateRef.current) {
+            const cancelledProperty: Circle = {
+              ...circles.find(c => c.id === property.id)!,
+              status: 'available',
+              bookedBy: undefined,
+              bookedAt: undefined
+            }
+            externalCircleUpdateRef.current(cancelledProperty)
+          }
+        } catch (error) {
+          console.error(`Failed to cancel property ${property.id}:`, error)
+        }
+      }
+
+      // Clear all local states
+      setSelectedDates([])
+      setRangeStart(null)
+      setIsSelectingRange(false)
+      setShowConfirmation(false)
+      setConfirmedProperties([])
+      setPropertyList([])
+      setBookingData([])
+      setSelectedPropertyIds(new Set())
+      setShowDetailPanel(false)
+      setShowClearConfirmDialog(false)
+
+      // Show success toast
+      toast({
+        title: "✅ ยกเลิกการเลือกแปลงสำเร็จ",
+        description: "ล้างข้อมูลการเลือกทั้งหมดแล้ว",
+      })
+
+    } catch (error) {
+      console.error("Error clearing selections:", error)
+      toast({
+        title: "❌ เกิดข้อผิดพลาด",
+        description: "ไม่สามารถยกเลิกการเลือกแปลงได้ กรุณาลองใหม่อีกครั้ง",
+        variant: "destructive"
+      })
+    }
   }
 
   const selectWeekdays = () => {
@@ -459,6 +540,22 @@ export default function PropertyLayout() {
       description: `ยกเลิกการเลือกจุด ${propertyId} แล้ว`,
     })
   }
+
+  // Add this function inside the PropertyLayout component
+const handleRemoveConfirmedProperty = (propertyId: string) => {
+  setConfirmedProperties(prev => prev.filter(property => property.id !== propertyId))
+
+  // Show notification
+  toast({
+    title: "ยกเลิกรายการ",
+    description: `ยกเลิกการจองแปลง ${propertyId} แล้ว`,
+  })
+
+  // If no more confirmed properties, close confirmation dialog
+  if (confirmedProperties.length <= 1) {
+    setShowConfirmation(false)
+  }
+}
   
   // Handle property click function - handles selecting and deselecting properties
   const handlePropertyClick = useCallback((property: Circle) => {
@@ -490,6 +587,7 @@ export default function PropertyLayout() {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showClearConfirmDialog, setShowClearConfirmDialog] = useState(false)
   
   // Sync propertyList กับ circles ที่มีสถานะ pending และถูกเลือกโดย user
   useEffect(() => {
@@ -789,7 +887,17 @@ export default function PropertyLayout() {
                         className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                       >
                         <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.id}</span>
-                        <span className="text-sm font-medium text-gray-600">฿ {property.price} บาท</span>
+                        <div className="flex gap-2">
+                            <span className="text-sm text-gray-600">{property.price} บาท</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveConfirmedProperty(property.id)}
+                              className="h-6 w-6 p-0 hover:bg-red-100 text-red-500 hover:text-red-700"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                       </div>
                     ))}
 
@@ -922,6 +1030,36 @@ export default function PropertyLayout() {
                 ยืนยันการจอง
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear All Dates Confirm Dialog */}
+      <Dialog open={showClearConfirmDialog} onOpenChange={setShowClearConfirmDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-red-600 flex items-center gap-2">
+              <X className="h-5 w-5" />
+              ยืนยันการล้างข้อมูล
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600">คุณต้องการล้างข้อมูลการเลือกทั้งหมดใช่หรือไม่?</p>
+            <p className="text-xs text-gray-500 mt-2">การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowClearConfirmDialog(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmClearAllDates}
+            >
+              ยืนยันการล้าง
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1208,7 +1346,7 @@ export default function PropertyLayout() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={clearAllDates}
+                        onClick={handleClearAllDates}
                         className="text-xs px-2 py-1 text-red-600 border-red-300 hover:bg-red-50 bg-transparent"
                       >
                         ล้าง
