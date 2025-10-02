@@ -15,6 +15,7 @@ import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getCurrentUsername } from "@/lib/user-utils"
 import ConnectionGuard from "@/components/connection-guard"
 import { updateCircleStatus, getCircles } from "@/lib/api/circles"
+import Spinner from "@/components/ui/Spinner"
 
 interface Property {
   id: string
@@ -1098,14 +1099,16 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
         <div className="flex-1 relative overflow-hidden bg-gray-50 min-h-[300px] lg:min-h-0">
           <div className="absolute inset-0">
             <div className="w-full h-full bg-white rounded-lg shadow-inner m-2 lg:m-4 overflow-hidden">
-              <CanvasMap
-                onCircleClick={handlePropertyClick}
-                onImageUpload={handleImageUpload}
-                onFilterChange={handleMapFilterChange}
-                selectedPropertyIds={selectedPropertyIds}
-                onExternalCircleUpdate={externalCircleUpdateRef}
-                onCirclesChange={setCircles}
-              />
+              <Spinner loading={false}>
+                <CanvasMap
+                  onCircleClick={handlePropertyClick}
+                  onImageUpload={handleImageUpload}
+                  onFilterChange={handleMapFilterChange}
+                  selectedPropertyIds={selectedPropertyIds}
+                  onExternalCircleUpdate={externalCircleUpdateRef}
+                  onCirclesChange={setCircles}
+                />
+              </Spinner>
             </div>
           </div>
 
