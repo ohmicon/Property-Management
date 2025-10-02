@@ -16,6 +16,7 @@ import { getCurrentUsername } from "@/lib/user-utils"
 import ConnectionGuard from "@/components/connection-guard"
 import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 import Spinner from "@/components/ui/Spinner"
+import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
 
 interface Property {
   id: string
@@ -33,7 +34,15 @@ interface BookingDetail {
   amount: number
 }
 
+interface ZoneDetail {
+  id: string;
+  name: string;
+  imagePath: string;
+}
+
 export default function PropertyLayout() {
+  // test project
+  const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
 
   const [activeTab, setActiveTab] = useState("monthly")
@@ -49,6 +58,8 @@ export default function PropertyLayout() {
   const [mapFilterMode, setMapFilterMode] = useState<"day" | "month">("month")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(() => new Date())
+  const [zoneList, setZoneList] = useState<ZoneDetail[]>([])
+  const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const { toast } = useToast()
 
   // Mock property data for the selected area
@@ -154,6 +165,33 @@ export default function PropertyLayout() {
       })
     }
   }, [remainingTimes])
+
+  useEffect(() => {
+    getZoneList()
+
+    //init search
+    setSelectedMonth("9")
+  }, [])
+
+  const getZoneList = async () => {
+    const zoneData = await getZonesByProjectApi({ project_id: projectId })
+    if (zoneData.data && zoneData.data?.length > 0){
+      setZoneList(zoneData.data.map((item) => {
+        return {
+          id: item.zone_id,
+          name: item.zone_name,
+          imagePath: item.zone_path_image,
+        }
+      }))
+
+      // set init zone
+      setSelectedZone(zoneData.data[0].zone_id)
+      setCanvasBackgroundImage(zoneData.data[0].zone_path_image)
+    }
+    else{
+      setZoneList([])
+    }
+  }
   
   // ฟังก์ชันสำหรับรีเฟรชข้อมูล
   const handleRefreshData = async () => {
@@ -239,8 +277,6 @@ export default function PropertyLayout() {
       setIsRefreshing(false)
     }
   }
-
-  console.log(searchUnitMatrix)
 
   const onChangeSearchYear = (value: string) => {
     setSelectedYear(value)
@@ -876,11 +912,13 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                     <SelectValue placeholder="เลือกโซน" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zone-a">โซน A</SelectItem>
-                    <SelectItem value="zone-b">โซน B</SelectItem>
-                    <SelectItem value="zone-c">โซน C</SelectItem>
-                    <SelectItem value="zone-d">โซน D</SelectItem>
-                    <SelectItem value="all">ทั้งหมด</SelectItem>
+                    {zoneList.map((zone) => {
+                      return (
+                        <SelectItem key={zone.id} value={zone.id}>
+                          {zone.name}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -1127,6 +1165,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
             <div className="w-full h-full bg-white rounded-lg shadow-inner m-2 lg:m-4 overflow-hidden">
               <Spinner loading={isLoadingUnitMatrix}>
                 <CanvasMap
+                  backgroundImageUrl={canvasBackgroundImage}
                   onCircleClick={handlePropertyClick}
                   onImageUpload={handleImageUpload}
                   onFilterChange={handleMapFilterChange}

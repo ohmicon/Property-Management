@@ -29,6 +29,7 @@ export interface SearchUnitMatrix {
 
 interface CanvasMapProps {
   onCircleClick?: (circle: Circle) => void
+  backgroundImageUrl?: string | null
   onImageUpload?: (file: File) => void
   onFilterChange?: (mode: "day" | "month") => void
   selectedPropertyIds?: Set<string>
@@ -39,7 +40,8 @@ interface CanvasMapProps {
 }
 
 export default function CanvasMap({ 
-  onCircleClick, 
+  onCircleClick,
+  backgroundImageUrl,
   onImageUpload, 
   onFilterChange, 
   selectedPropertyIds, 
@@ -480,7 +482,12 @@ export default function CanvasMap({
       setBackgroundImage(img)
       setIsImageLoaded(true)
     }
-    img.src = "./NumberOneNightMarketZoneA.jpg";
+    if (backgroundImageUrl){
+      img.src = backgroundImageUrl
+    }
+    else{
+      img.src = "./Image-not-found.png";
+    }
     //img.src = "https://picsum.photos/id/1015/1200/800"
   }, [])
 
