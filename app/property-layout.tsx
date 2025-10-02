@@ -539,7 +539,7 @@ export default function PropertyLayout() {
     
     toast({
       title: "ยกเลิกการเลือก",
-      description: `ยกเลิกการเลือกจุด ${propertyId} แล้ว`,
+      description: `ยกเลิกการเลือกจุด ${cancelledProperty.name} แล้ว`,
     })
   }
 
@@ -704,7 +704,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
             externalCircleUpdateRef.current(updatedCircle)
           }
         } catch (error) {
-          console.error(`ไม่สามารถอัพเดทแปลง ${property.id} ได้:`, error)
+          console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
         }
       }
       

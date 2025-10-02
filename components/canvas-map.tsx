@@ -139,7 +139,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
         const circlesData = unitMatrixData.data?.map((item) => {
           return {
             id: item.unit_id,
-            r: 20,
+            r: 23,
             status: item.status_desc.toLocaleLowerCase(),
             x: item.x,
             y: item.y,
@@ -225,7 +225,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
       
       const statusText = updatedCircle.status === 'available' ? 'ว่าง' : 
                         updatedCircle.status === 'pending' ? `ถูกจองโดย ${updatedCircle.bookedBy}` : 'ขายแล้ว'
-      toast.info(`🔄 ${updatedCircle.id} เปลี่ยนเป็น ${statusText}`)
+      toast.info(`🔄 ${updatedCircle.name} เปลี่ยนเป็น ${statusText}`)
     }
 
     // Add socket listener for real-time updates
@@ -406,7 +406,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
               // This is authoritative and should never be overridden
               if (circle.status === 'booked') {
                 console.log(`🔒 Ignoring update for booked circle ${circle.id} (API authoritative)`);
-                toast.info(`${circle.id} ถูกจองแล้ว ไม่สามารถเปลี่ยนแปลงได้`);
+                toast.info(`${circle.name} ถูกจองแล้ว ไม่สามารถเปลี่ยนแปลงได้`);
                 return circle;
               }
               
@@ -711,21 +711,21 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
           newStatus = 'pending'
           newBookedBy = currentUsername
           newBookedAt = Date.now()
-          toast.success(`จอง ${circle.id} สำเร็จ!`)
+          toast.success(`จอง ${circle.name} สำเร็จ!`)
         } else if (circle.status === 'pending') {
           // Only the person who booked can cancel
           if (circle.bookedBy === currentUsername) {
             newStatus = 'available'
             newBookedBy = undefined
             newBookedAt = undefined
-            toast.success(`ยกเลิกการจอง ${circle.id} สำเร็จ!`)
+            toast.success(`ยกเลิกการจอง ${circle.name} สำเร็จ!`)
           } else {
             toast.error(`ไม่สามารถยกเลิกการจองของ ${circle.bookedBy} ได้`)
             return
           }
         } else {
           // Booked circles cannot be changed
-          toast.info(`${circle.id} ถูกจองแล้ว`)
+          toast.info(`${circle.name} ถูกจองแล้ว`)
           return
         }
 
@@ -800,7 +800,7 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
           bookedBy: currentUsername,
           bookedAt: now
         }
-        toast.success(`📍 ${currentUsername} จอง ${circle.id} ไว้ชั่วคราว`)
+        toast.success(`📍 ${currentUsername} จอง ${circle.name} ไว้ชั่วคราว`)
       } else if (circle.status === "pending") {
         // Only the person who booked can cancel
         if (circle.bookedBy === currentUsername) {
@@ -810,14 +810,14 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
             bookedBy: undefined,
             bookedAt: undefined
           }
-          toast.success(`❌ ${currentUsername} ยกเลิกการจอง ${circle.id}`)
+          toast.success(`❌ ${currentUsername} ยกเลิกการจอง ${circle.name}`)
         } else {
-          toast.error(`⚠️ ไม่สามารถยกเลิกได้ ${circle.id} ถูกจองโดย ${circle.bookedBy}`)
+          toast.error(`⚠️ ไม่สามารถยกเลิกได้ ${circle.name} ถูกจองโดย ${circle.bookedBy}`)
           return // Don't update if not the owner
         }
       } else if (circle.status === "booked") {
         // Booked circles from API are permanent and cannot be changed
-        toast.info(`${circle.id} ถูกจองแล้ว ไม่สามารถเปลี่ยนแปลงได้`)
+        toast.info(`${circle.name} ถูกจองแล้ว ไม่สามารถเปลี่ยนแปลงได้`)
         return
       } else {
         // Unknown status - shouldn't happen
