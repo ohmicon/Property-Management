@@ -9,7 +9,7 @@ import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw } from
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import CanvasMap, { Circle } from "@/components/canvas-map"
+import CanvasMap, { Circle, SearchUnitMatrix } from "@/components/canvas-map"
 import { useToast } from "@/hooks/use-toast"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getCurrentUsername } from "@/lib/user-utils"
@@ -60,6 +60,12 @@ export default function PropertyLayout() {
   
   // State สำหรับ circles จาก CanvasMap
   const [circles, setCircles] = useState<Circle[]>([])
+  const [searchUnitMatrix, setSearchUnitMatrix] = useState<SearchUnitMatrix>({
+    day: 0,
+    month: 9,
+    year: 2025
+  })
+  const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
   // State for tracking remaining booking time
   const [remainingTimes, setRemainingTimes] = useState<Record<string, number>>({})
@@ -232,6 +238,26 @@ export default function PropertyLayout() {
     } finally {
       setIsRefreshing(false)
     }
+  }
+
+  console.log(searchUnitMatrix)
+
+  const onChangeSearchYear = (value: string) => {
+    setSelectedYear(value)
+    setSearchUnitMatrix({
+      day: searchUnitMatrix.day,
+      month: searchUnitMatrix.month,
+      year: Number(value)
+    })
+  }
+
+  const onChangeSearchMonth = (value: string) => {
+    setSelectedMonth(value)
+    setSearchUnitMatrix({
+      day: searchUnitMatrix.day,
+      month: Number(value),
+      year: searchUnitMatrix.year
+    })
   }
 
   // Calendar highlighted days (booking days)
@@ -813,7 +839,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                   <Calendar className="w-4 h-4" />
                   เดือน
                 </label>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <Select value={selectedMonth} onValueChange={onChangeSearchMonth}>
                   <SelectTrigger className="w-full hover:border-blue-300 transition-colors">
                     <SelectValue />
                   </SelectTrigger>
@@ -830,7 +856,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
               {/* Year Selection */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">ปี</label>
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <Select value={selectedYear} onValueChange={onChangeSearchYear}>
                   <SelectTrigger className="w-full hover:border-blue-300 transition-colors">
                     <SelectValue />
                   </SelectTrigger>
@@ -1099,7 +1125,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
         <div className="flex-1 relative overflow-hidden bg-gray-50 min-h-[300px] lg:min-h-0">
           <div className="absolute inset-0">
             <div className="w-full h-full bg-white rounded-lg shadow-inner m-2 lg:m-4 overflow-hidden">
-              <Spinner loading={false}>
+              <Spinner loading={isLoadingUnitMatrix}>
                 <CanvasMap
                   onCircleClick={handlePropertyClick}
                   onImageUpload={handleImageUpload}
@@ -1107,6 +1133,10 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                   selectedPropertyIds={selectedPropertyIds}
                   onExternalCircleUpdate={externalCircleUpdateRef}
                   onCirclesChange={setCircles}
+                  filterUnitMatrix={searchUnitMatrix}
+                  onLoading={(isLoading) => {
+                    setIsLoadingUnitMatrix(isLoading)
+                  }}
                 />
               </Spinner>
             </div>

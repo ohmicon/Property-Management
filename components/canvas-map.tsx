@@ -21,6 +21,12 @@ export interface Circle {
   bookedAt?: number // Timestamp ของการจอง
 }
 
+export interface SearchUnitMatrix {
+  year: number;
+  month: number;
+  day: number;
+}
+
 interface CanvasMapProps {
   onCircleClick?: (circle: Circle) => void
   onImageUpload?: (file: File) => void
@@ -28,9 +34,20 @@ interface CanvasMapProps {
   selectedPropertyIds?: Set<string>
   onExternalCircleUpdate?: React.MutableRefObject<((circle: Circle) => void) | null> // ใช้ ref สำหรับ external update
   onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
+  filterUnitMatrix?: SearchUnitMatrix
+  onLoading?: (isLoading: boolean) => void 
 }
 
-export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange, selectedPropertyIds, onExternalCircleUpdate, onCirclesChange }: CanvasMapProps) {
+export default function CanvasMap({ 
+  onCircleClick, 
+  onImageUpload, 
+  onFilterChange, 
+  selectedPropertyIds, 
+  onExternalCircleUpdate, 
+  onCirclesChange, 
+  filterUnitMatrix,
+  onLoading 
+}: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
   const [isImageLoaded, setIsImageLoaded] = useState(false)
@@ -126,15 +143,19 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
     const loadCircles = async () => {
       try {
         setIsLoadingCircles(true)
+        if (onLoading) {
+          onLoading(true)
+        }
         // const circlesData = await getCircles()
 
         // test connect rental
-        const unitMatrixData = await getUnitMatrixApi({
+        const searchUnitMatrixPayload = {
           project_id: 'M004',
-          year: 2025,
-          month: 9,
-          day: 0
-        })
+          year: filterUnitMatrix?.year || 2025,
+          month: filterUnitMatrix?.month || 9,
+          day: filterUnitMatrix?.day || 0
+        } 
+        const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
         const circlesData = unitMatrixData.data?.map((item) => {
           return {
@@ -198,11 +219,16 @@ export default function CanvasMap({ onCircleClick, onImageUpload, onFilterChange
         toast.error('ไม่สามารถโหลดข้อมูลจุดจองได้')
       } finally {
         setIsLoadingCircles(false)
+        if (onLoading) {
+          onLoading(false)
+        }
       }
     }
 
-    loadCircles()
-  }, [hasReceivedSocketData])
+    if (hasReceivedSocketData){
+      loadCircles()
+    }
+  }, [hasReceivedSocketData, filterUnitMatrix])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
