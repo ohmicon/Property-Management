@@ -3,7 +3,7 @@ import { ApiResponse, axiosPublic } from "../axios";
 export interface UnitBookingDate {
   unit_number: string
   booking_date_list: {
-    [key: string]: string
+    [key: string]: number
   }
 }
 

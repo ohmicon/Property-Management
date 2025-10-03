@@ -9,7 +9,7 @@ export interface IPayloadGetUnitBookingDateService {
   day: number
 }
 
-export const getUnitBookingDate = async ({ project_id, year, month, day }: IPayloadGetUnitBookingDateService): Promise<IResponse<Array<{[key: string]: string}>>> => {
+export const getUnitBookingDate = async ({ project_id, year, month, day }: IPayloadGetUnitBookingDateService): Promise<IResponse<Array<{[key: string]: string | number}>>> => {
   try{
     const pool = await getConnection();
     let result = await pool.request()

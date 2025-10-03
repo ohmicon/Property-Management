@@ -12,7 +12,7 @@ export interface IPayloadGetUnitBookingDateController {
 export interface IResponseGetUnitBookingDateController {
   unit_number: string;
   booking_date_list: {
-    [key: string]: string
+    [key: string]: number
   }
 }
 
@@ -24,12 +24,12 @@ export const getUnitBookingDateController = async (payload: IPayloadGetUnitBooki
       month: payload.month,
       day: payload.day
     })
-    const responseUnitBookingDateList = unitBookingData.data?.map((item: {[key: string]: string}) => {
-      const unit_number = item['UnitNumber']
+    const responseUnitBookingDateList = unitBookingData.data?.map((item: {[key: string]: string | number}) => {
+      const unit_number = item['UnitNumber'] as string
       delete item['UnitNumber']
       return {
         unit_number: unit_number,
-        booking_date_list: item
+        booking_date_list: item as {[key: string]: number}
       }
     }) || []
     return {
