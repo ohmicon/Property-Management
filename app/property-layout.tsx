@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
+import dayjs from 'dayjs'
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,6 +18,7 @@ import ConnectionGuard from "@/components/connection-guard"
 import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 import Spinner from "@/components/ui/Spinner"
 import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
+import { getUnitBookingDateApi, UnitBookingDate } from "@/lib/api/unit-booking"
 
 interface Property {
   id: string
@@ -60,6 +62,8 @@ export default function PropertyLayout() {
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(() => new Date())
   const [zoneList, setZoneList] = useState<ZoneDetail[]>([])
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
+  const [unitBookingDateList, setUnitBookingDateList] = useState<UnitBookingDate[]>([])
+  const [disableDateList, setDisableDateList] = useState<{[key: string]: number}>({})
   const { toast } = useToast()
 
   // Mock property data for the selected area
@@ -167,10 +171,14 @@ export default function PropertyLayout() {
   }, [remainingTimes])
 
   useEffect(() => {
-    getZoneList()
+    const init = async () => {
+      getZoneList()
+      getUnitBookingDate()
 
     //init search
-    setSelectedMonth("9")
+      setSelectedMonth("9")
+    }
+    init()
   }, [])
 
   const getZoneList = async () => {
@@ -190,6 +198,66 @@ export default function PropertyLayout() {
     }
     else{
       setZoneList([])
+    }
+  }
+
+  const getUnitBookingDate = async () => {
+    const unitBookingDateData = await getUnitBookingDateApi({ 
+      project_id: projectId,
+      day: 0,
+      month: 9,
+      year: 2025
+    })
+
+
+    if (unitBookingDateData.data && unitBookingDateData.data.length > 0){
+      setUnitBookingDateList(unitBookingDateData.data)
+    }
+    else{
+      setUnitBookingDateList([])
+    }
+    return unitBookingDateData.data
+  }
+
+  const handleDisableDateByProperty = (unit: Property) => {
+    // handle before bookingData state change
+    if (unitBookingDateList.length > 0) {
+      const unitBookingDate = unitBookingDateList.find((item) => {
+        return item.unit_number === unit.name
+      })
+      if (!unitBookingDate) {
+        return
+      }
+      const isSelectUnit = bookingData.findIndex((item) => item.name === unit.name)
+      // found
+      if (isSelectUnit > -1) {
+        // remove disable date
+        const dateKeyList = Object.keys(disableDateList)
+        // const newDisableDate = disableDateList.filter((date) => {
+        //   return !(unitBookingDate.booking_date_list[date] === 1)
+        // })
+        setDisableDateList((prev) => {
+          dateKeyList.forEach((date) => {
+            const foundDate = unitBookingDate.booking_date_list[date] === 1
+            if (foundDate){
+              prev[date] = 0
+            }
+          })
+          return prev
+        })
+      }
+      else{
+        const dateKeyList = Object.keys(unitBookingDate.booking_date_list)
+        for (const dateKey of dateKeyList){
+          const isBooking = unitBookingDate.booking_date_list[dateKey] === 1
+          if (isBooking) {
+            setDisableDateList((prev) => {
+              prev[dateKey] = 1
+              return prev
+            })
+          }
+        }
+      }
     }
   }
   
@@ -625,6 +693,12 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
   // Handle property click function - handles selecting and deselecting properties
   const handlePropertyClick = useCallback((property: Circle) => {
     // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
+    handleDisableDateByProperty({
+      id: property.id,
+      name: property.name,
+      price: "",
+      status: property.status
+    })
     if (selectedPropertyIds.has(property.id)) {
       // ถ้าถูกเลือกแล้ว ให้ยกเลิกการเลือก
       handleRemoveProperty(property.id)
@@ -632,7 +706,6 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
     }
 
     setSelectedProperty(property)
-
     // เพิ่มรายการเข้าไปใน propertyList ถ้ายังไม่มี
     // แต่ต้องรอให้จุดเปลี่ยนเป็น pending ก่อน (จะเพิ่มใน useEffect)
     // setPropertyList จะทำใน useEffect ที่ listen การเปลี่ยนแปลงสถานะ
@@ -1497,8 +1570,11 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                             // ตรวจสอบว่าเป็นวันที่ผ่านมาแล้ว
                             const today = new Date()
                             const selectedDate = new Date(currentYear, currentMonth - 1, day)
+                            const dateString = dayjs(selectedDate).format('YYYY-MM-DD')
                             const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
                             const isPastDate = isCurrentMonth && selectedDate < todayStart
+                            // const isDisable = (disableDateList[dateString] === 1) || isPastDate
+                            const isDisable = (disableDateList[dateString] === 1)
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
@@ -1508,9 +1584,9 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                               <button
                                 key={i}
                                 onClick={() => handleDateClick(day)}
-                                disabled={isPastDate}
+                                disabled={isDisable}
                                 className={`text-xs text-center p-1 rounded transition-all duration-200 ${
-                                  isPastDate
+                                  isDisable
                                     ? "text-gray-300 cursor-not-allowed bg-gray-50"
                                     : isSelected
                                       ? "bg-blue-500 text-white shadow-md transform scale-105 hover:scale-110"
