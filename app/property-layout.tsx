@@ -260,8 +260,6 @@ export default function PropertyLayout() {
       }
     }
   }
-
-  console.log(disableDateList, 'disableDateList')
   
   // ฟังก์ชันสำหรับรีเฟรชข้อมูล
   const handleRefreshData = async () => {
@@ -1572,10 +1570,11 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                             // ตรวจสอบว่าเป็นวันที่ผ่านมาแล้ว
                             const today = new Date()
                             const selectedDate = new Date(currentYear, currentMonth - 1, day)
-                            const dateString = dayjs(selectedDate).format('YYYY-mm-ddd')
+                            const dateString = dayjs(selectedDate).format('YYYY-MM-DD')
                             const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
                             const isPastDate = isCurrentMonth && selectedDate < todayStart
-                            const isDisable = (disableDateList[dateString] === 1) || isPastDate
+                            // const isDisable = (disableDateList[dateString] === 1) || isPastDate
+                            const isDisable = (disableDateList[dateString] === 1)
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
