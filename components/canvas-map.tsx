@@ -14,7 +14,7 @@ export interface Circle {
   x: number
   y: number
   r: number
-  status: "available" | "booked" | "pending"
+  status: "available" | "booked" | "pending" | "some available"
   id: string
   name: string;
   bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
@@ -33,7 +33,7 @@ interface CanvasMapProps {
   onImageUpload?: (file: File) => void
   onFilterChange?: (mode: "day" | "month") => void
   selectedPropertyIds?: Set<string>
-  onExternalCircleUpdate?: React.MutableRefObject<((circle: Circle) => void) | null> // ใช้ ref สำหรับ external update
+  onExternalCircleUpdate?: React.MutableRefObject<((circles: Circle[]) => void) | null> // ใช้ ref สำหรับ external update
   onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
   filterUnitMatrix?: SearchUnitMatrix
   onLoading?: (isLoading: boolean) => void 
@@ -125,6 +125,14 @@ export default function CanvasMap({
           isDashed: true
         }
       }
+    } else if (circle.status === 'some available') {
+      // partially booked status
+      return {
+        fillColor: "rgba(227, 159, 95, 0.7)",
+        strokeColor: "rgba(200, 160, 0, 1)",
+        strokeWidth: 2,
+        cursor: 'default'
+      }
     } else {
       // booked status
       return {
@@ -182,7 +190,9 @@ export default function CanvasMap({
             // If the circle is already booked in the API data, keep it as booked
             // This is authoritative and should never be overridden
             if (dbCircle.status === 'booked') {
-              console.log(`🔒 Circle ${dbCircle.id} is booked in API - preserving booked status`)
+              return dbCircle
+            }
+            else if (dbCircle.status === 'some available') {
               return dbCircle
             }
             
@@ -418,18 +428,19 @@ export default function CanvasMap({
   // Handle external circle updates (e.g., from Property List removal)
   useEffect(() => {
     if (onExternalCircleUpdate) {
-      const handleExternalUpdate = (updatedCircle: Circle) => {
-        console.log('🔄 Processing external circle update:', updatedCircle)
+      const handleExternalUpdate = (updatedCircles: Array<Circle>) => {
+        console.log('🔄 Processing external circles update:', updatedCircles)
         
-        // Validate the updated circle
-        if (!updatedCircle || !updatedCircle.id || !updatedCircle.status) {
-          console.error('❌ Invalid external circle update:', updatedCircle)
+        // Validate the updated circles
+        if (!updatedCircles || updatedCircles.length === 0) {
+          console.error('❌ Invalid external circles update:', updatedCircles)
           return
         }
         
         setCircles(prevCircles => {
           const newCircles = prevCircles.map(circle => {
-            if (circle.id === updatedCircle.id) {
+            const updatedCircle = updatedCircles.find(c => c.id === circle.id)
+            if (updatedCircle) {
               // Don't allow external updates to modify circles that are already booked from API
               // This is authoritative and should never be overridden
               if (circle.status === 'booked') {
@@ -461,7 +472,6 @@ export default function CanvasMap({
           return newCircles
         })
       }
-      
       // Assign the handler to the ref
       onExternalCircleUpdate.current = handleExternalUpdate
     }

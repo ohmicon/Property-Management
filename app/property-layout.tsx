@@ -24,7 +24,7 @@ interface Property {
   id: string
   name: string;
   price: string
-  status: "available" | "booked" | "pending"
+  status: "available" | "booked" | "pending" | "some available"
   bookedAt?: number
   bookedBy?: string
   remainingTime?: number
@@ -72,7 +72,7 @@ export default function PropertyLayout() {
   const [bookingData, setBookingData] = useState<Property[]>([])
   
   // Ref for external circle update handler
-  const externalCircleUpdateRef = useRef<((circle: Circle) => void) | null>(null)
+  const externalCircleUpdateRef = useRef<((circles: Circle[]) => void) | null>(null)
   
   // State สำหรับ circles จาก CanvasMap
   const [circles, setCircles] = useState<Circle[]>([])
@@ -365,6 +365,22 @@ export default function PropertyLayout() {
     })
   }
 
+  const onChangeSelectBookType = (value: string) => {
+    setActiveTab(value)
+    if (isShowOverlay && isLoadingUnitMatrix && value === 'monthly'){
+      setIsShowOverlay(false)
+      setIsLoadingUnitMatrix(false)
+    }
+    // clear all selected dates when change tab
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
+  }
+
   // Calendar highlighted days (booking days)
   // const highlightedDays = [11, 12, 13, 14, 18, 19, 20, 21, 25, 26, 27, 28]
 
@@ -403,9 +419,11 @@ export default function PropertyLayout() {
   }
 
   const handleDateClick = (day: number) => {
-    // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
-    setIsLoadingUnitMatrix(true)
-    setIsShowOverlay(true)
+    if (activeTab === 'daily'){
+      // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
+      setIsLoadingUnitMatrix(true)
+      setIsShowOverlay(true)
+    }
     const today = new Date()
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -512,7 +530,7 @@ export default function PropertyLayout() {
               bookedBy: undefined,
               bookedAt: undefined
             }
-            externalCircleUpdateRef.current(cancelledProperty)
+            externalCircleUpdateRef.current([cancelledProperty])
           }
         } catch (error) {
           console.error(`Failed to cancel property ${property.id}:`, error)
@@ -671,7 +689,7 @@ export default function PropertyLayout() {
     // อัปเดต Canvas Map โดยตรงผ่าน external update handler
     // (การเรียก broadcastCircleUpdate จะทำใน external handler แล้ว)
     if (externalCircleUpdateRef.current) {
-      externalCircleUpdateRef.current(cancelledProperty)
+      externalCircleUpdateRef.current([cancelledProperty])
     }
     
     toast({
@@ -822,6 +840,12 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
     setIsShowOverlay(false)
     setIsLoadingUnitMatrix(false)
     setSelectedPropertyIds(new Set())
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const handleVerifyBooking = () => {
@@ -853,7 +877,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
         
           // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
           if (externalCircleUpdateRef.current) {
-            externalCircleUpdateRef.current(updatedCircle)
+            externalCircleUpdateRef.current([updatedCircle])
           }
         } catch (error) {
           console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
@@ -929,7 +953,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
           <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
             <Button
               variant={activeTab === "monthly" ? "default" : "ghost"}
-              onClick={() => setActiveTab("monthly")}
+              onClick={() => onChangeSelectBookType("monthly")}
               className={`flex-1 transition-all duration-200 ${
                 activeTab === "monthly" ? "bg-blue-500 text-white shadow-md" : "text-gray-600 hover:text-gray-800"
               }`}
@@ -939,7 +963,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
             </Button>
             <Button
               variant={activeTab === "daily" ? "default" : "ghost"}
-              onClick={() => setActiveTab("daily")}
+              onClick={() => onChangeSelectBookType("daily")}
               className={`flex-1 transition-all duration-200 ${
                 activeTab === "daily" ? "bg-blue-500 text-white shadow-md" : "text-gray-600 hover:text-gray-800"
               }`}
@@ -1593,7 +1617,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                             const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
                             const isPastDate = isCurrentMonth && selectedDate < todayStart
                             // const isDisable = (disableDateList[dateString] === 1) || isPastDate
-                            const isDisable = (disableDateList[dateString] === 1)
+                            const isDisable = (disableDateList[dateString] === 1) || bookingData.length === 0
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
