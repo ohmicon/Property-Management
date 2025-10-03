@@ -723,9 +723,13 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
       onSelectBooking(property)
     }
 
+    if(showDetailPanel){
+      setShowPropertyList(false)
+    }
+    
     setShowPropertyList(true)
     // ปิดกรอบการจองเมื่อแสดงรายการแปลง
-    setShowDetailPanel(false)
+    // setShowDetailPanel(false)
   }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
 
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -796,6 +800,8 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
     if (propertyList.length > 0) {
       setShowPropertyList(true)
     }
+    setIsShowOverlay(false)
+    setIsLoadingUnitMatrix(false)
   }
 
   const handleImageUpload = (file: File) => {
