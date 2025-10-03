@@ -59,6 +59,7 @@ export default function PropertyLayout() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(() => new Date())
   const [zoneList, setZoneList] = useState<ZoneDetail[]>([])
+  const [isShowOverlay, setIsShowOverlay] = useState(false);
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const { toast } = useToast()
 
@@ -335,6 +336,8 @@ export default function PropertyLayout() {
 
   const handleDateClick = (day: number) => {
     // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
+    setIsLoadingUnitMatrix(true)
+    setIsShowOverlay(true)
     const today = new Date()
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -373,6 +376,8 @@ export default function PropertyLayout() {
           setConfirmedProperties([...bookingData])
         } else {
           // Just clear the confirmation without showing dialog
+          setIsLoadingUnitMatrix(false)
+          setIsShowOverlay(false)
           setShowConfirmation(false)
           setConfirmedProperties([])
         }
@@ -400,6 +405,7 @@ export default function PropertyLayout() {
   }
 
   const clearAllDates = () => {
+    // เคลียร์เฉพาะวันที่ที่เลือกและการเลือกช่วง
     setSelectedDates([])
     setRangeStart(null)
     setIsSelectingRange(false)
@@ -413,7 +419,7 @@ export default function PropertyLayout() {
   }
 
   const handleClearAllDates = () => {
-    setShowClearConfirmDialog(true)
+        setShowClearConfirmDialog(true)
   }
 
   const confirmClearAllDates = async () => {
@@ -733,6 +739,9 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
   const handleConfirm = () => {
     setConfirmedProperties([...bookingData])
     setShowConfirmation(true)
+    setShowDetailPanel(false)
+    setIsShowOverlay(false)
+    setIsLoadingUnitMatrix(false)
   }
 
   const handleVerifyBooking = () => {
@@ -1116,10 +1125,13 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
             <p className="text-xs text-gray-500 mt-2">การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
           </div>
           <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => setShowClearConfirmDialog(false)}
-            >
+              <Button
+                variant="outline"
+                onClick={() => {
+                  clearAllDates()
+                  setShowClearConfirmDialog(false)
+                }}
+              >
               ยกเลิก
             </Button>
             <Button
@@ -1163,7 +1175,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
         <div className="flex-1 relative overflow-hidden bg-gray-50 min-h-[300px] lg:min-h-0">
           <div className="absolute inset-0">
             <div className="w-full h-full bg-white rounded-lg shadow-inner m-2 lg:m-4 overflow-hidden">
-              <Spinner loading={isLoadingUnitMatrix}>
+              <Spinner loading={isLoadingUnitMatrix} showSVG={isShowOverlay}>
                 <CanvasMap
                   backgroundImageUrl={canvasBackgroundImage}
                   onCircleClick={handlePropertyClick}
