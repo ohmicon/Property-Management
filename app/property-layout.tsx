@@ -815,6 +815,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
     setShowDetailPanel(false)
     setIsShowOverlay(false)
     setIsLoadingUnitMatrix(false)
+    setSelectedPropertyIds(new Set())
   }
 
   const handleVerifyBooking = () => {
