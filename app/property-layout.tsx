@@ -9,12 +9,14 @@ import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw } from
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import CanvasMap, { Circle } from "@/components/canvas-map"
+import CanvasMap, { Circle, SearchUnitMatrix } from "@/components/canvas-map"
 import { useToast } from "@/hooks/use-toast"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getCurrentUsername } from "@/lib/user-utils"
 import ConnectionGuard from "@/components/connection-guard"
 import { updateCircleStatus, getCircles } from "@/lib/api/circles"
+import Spinner from "@/components/ui/Spinner"
+import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
 
 interface Property {
   id: string
@@ -32,7 +34,15 @@ interface BookingDetail {
   amount: number
 }
 
+interface ZoneDetail {
+  id: string;
+  name: string;
+  imagePath: string;
+}
+
 export default function PropertyLayout() {
+  // test project
+  const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
 
   const [activeTab, setActiveTab] = useState("monthly")
@@ -48,6 +58,8 @@ export default function PropertyLayout() {
   const [mapFilterMode, setMapFilterMode] = useState<"day" | "month">("month")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(() => new Date())
+  const [zoneList, setZoneList] = useState<ZoneDetail[]>([])
+  const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const { toast } = useToast()
 
   // Mock property data for the selected area
@@ -59,6 +71,12 @@ export default function PropertyLayout() {
   
   // State สำหรับ circles จาก CanvasMap
   const [circles, setCircles] = useState<Circle[]>([])
+  const [searchUnitMatrix, setSearchUnitMatrix] = useState<SearchUnitMatrix>({
+    day: 0,
+    month: 9,
+    year: 2025
+  })
+  const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
   // State for tracking remaining booking time
   const [remainingTimes, setRemainingTimes] = useState<Record<string, number>>({})
@@ -147,6 +165,33 @@ export default function PropertyLayout() {
       })
     }
   }, [remainingTimes])
+
+  useEffect(() => {
+    getZoneList()
+
+    //init search
+    setSelectedMonth("9")
+  }, [])
+
+  const getZoneList = async () => {
+    const zoneData = await getZonesByProjectApi({ project_id: projectId })
+    if (zoneData.data && zoneData.data?.length > 0){
+      setZoneList(zoneData.data.map((item) => {
+        return {
+          id: item.zone_id,
+          name: item.zone_name,
+          imagePath: item.zone_path_image,
+        }
+      }))
+
+      // set init zone
+      setSelectedZone(zoneData.data[0].zone_id)
+      setCanvasBackgroundImage(zoneData.data[0].zone_path_image)
+    }
+    else{
+      setZoneList([])
+    }
+  }
   
   // ฟังก์ชันสำหรับรีเฟรชข้อมูล
   const handleRefreshData = async () => {
@@ -233,6 +278,24 @@ export default function PropertyLayout() {
     }
   }
 
+  const onChangeSearchYear = (value: string) => {
+    setSelectedYear(value)
+    setSearchUnitMatrix({
+      day: searchUnitMatrix.day,
+      month: searchUnitMatrix.month,
+      year: Number(value)
+    })
+  }
+
+  const onChangeSearchMonth = (value: string) => {
+    setSelectedMonth(value)
+    setSearchUnitMatrix({
+      day: searchUnitMatrix.day,
+      month: Number(value),
+      year: searchUnitMatrix.year
+    })
+  }
+
   // Calendar highlighted days (booking days)
   // const highlightedDays = [11, 12, 13, 14, 18, 19, 20, 21, 25, 26, 27, 28]
 
@@ -277,7 +340,6 @@ export default function PropertyLayout() {
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
     if (selectedDate < todayStart) {
-      // ไม่สามารถเลือกวันที่ผ่านมาแล้ว
       return
     }
 
@@ -289,7 +351,6 @@ export default function PropertyLayout() {
         const start = Math.min(rangeStart, day)
         const end = Math.max(rangeStart, day)
         const range = Array.from({ length: end - start + 1 }, (_, i) => start + i)
-        // กรองเฉพาะวันที่ไม่ผ่านมาแล้ว
         const validRange = range.filter(d => {
           const checkDate = new Date(currentYear, currentMonth - 1, d)
           return checkDate >= todayStart
@@ -297,11 +358,26 @@ export default function PropertyLayout() {
         setSelectedDates(validRange)
         setRangeStart(null)
         setIsSelectingRange(false)
+        setShowConfirmation(true)
+        setConfirmedProperties([...bookingData])
       }
     } else {
-      setSelectedDates((prev) =>
-        prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b),
-      )
+      setSelectedDates((prev) => {
+        const newDates = prev.includes(day)
+          ? prev.filter((d) => d !== day)
+          : [...prev, day].sort((a, b) => a - b)
+        
+        // Show confirmation only if there are dates selected
+        if (newDates.length > 0) {
+          setShowConfirmation(true)
+          setConfirmedProperties([...bookingData])
+        } else {
+          // Just clear the confirmation without showing dialog
+          setShowConfirmation(false)
+          setConfirmedProperties([])
+        }
+        return newDates
+      })
     }
   }
 
@@ -327,6 +403,74 @@ export default function PropertyLayout() {
     setSelectedDates([])
     setRangeStart(null)
     setIsSelectingRange(false)
+    // Clear all selections
+    setShowConfirmation(false)
+    setConfirmedProperties([])
+    setPropertyList([])
+    setBookingData([])
+    setSelectedPropertyIds(new Set())
+    setShowDetailPanel(false)
+  }
+
+  const handleClearAllDates = () => {
+    setShowClearConfirmDialog(true)
+  }
+
+  const confirmClearAllDates = async () => {
+    try {
+      // Show loading toast
+      toast({
+        title: "⏳ กำลังยกเลิกการเลือกแปลง...",
+        description: "กรุณารอสักครู่",
+      })
+
+      // Cancel all selected properties via API
+      for (const property of propertyList) {
+        try {
+          // Call API to update circle status back to available
+          await updateCircleStatus(property.id, 'available')
+          
+          // Update circle in UI through external handler
+          if (externalCircleUpdateRef.current) {
+            const cancelledProperty: Circle = {
+              ...circles.find(c => c.id === property.id)!,
+              status: 'available',
+              bookedBy: undefined,
+              bookedAt: undefined
+            }
+            externalCircleUpdateRef.current(cancelledProperty)
+          }
+        } catch (error) {
+          console.error(`Failed to cancel property ${property.id}:`, error)
+        }
+      }
+
+      // Clear all local states
+      setSelectedDates([])
+      setRangeStart(null)
+      setIsSelectingRange(false)
+      setShowConfirmation(false)
+      setConfirmedProperties([])
+      setPropertyList([])
+      setBookingData([])
+      setSelectedPropertyIds(new Set())
+      setShowDetailPanel(false)
+      setShowClearConfirmDialog(false)
+
+      // Show success toast
+      toast({
+        title: "✅ ยกเลิกการเลือกแปลงสำเร็จ",
+        description: "ล้างข้อมูลการเลือกทั้งหมดแล้ว",
+      })
+
+    } catch (error) {
+      console.error("Error clearing selections:", error)
+      toast({
+        title: "❌ เกิดข้อผิดพลาด",
+        description: "ไม่สามารถยกเลิกการเลือกแปลงได้ กรุณาลองใหม่อีกครั้ง",
+        variant: "destructive"
+      })
+    }
   }
 
   const selectWeekdays = () => {
@@ -461,6 +605,22 @@ export default function PropertyLayout() {
       description: `ยกเลิกการเลือกจุด ${cancelledProperty.name} แล้ว`,
     })
   }
+
+  // Add this function inside the PropertyLayout component
+const handleRemoveConfirmedProperty = (propertyId: string) => {
+  setConfirmedProperties(prev => prev.filter(property => property.id !== propertyId))
+
+  // Show notification
+  toast({
+    title: "ยกเลิกรายการ",
+    description: `ยกเลิกการจองแปลง ${propertyId} แล้ว`,
+  })
+
+  // If no more confirmed properties, close confirmation dialog
+  if (confirmedProperties.length <= 1) {
+    setShowConfirmation(false)
+  }
+}
   
   // Handle property click function - handles selecting and deselecting properties
   const handlePropertyClick = useCallback((property: Circle) => {
@@ -492,6 +652,7 @@ export default function PropertyLayout() {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showClearConfirmDialog, setShowClearConfirmDialog] = useState(false)
   
   // Sync propertyList กับ circles ที่มีสถานะ pending และถูกเลือกโดย user
   useEffect(() => {
@@ -714,7 +875,7 @@ export default function PropertyLayout() {
                   <Calendar className="w-4 h-4" />
                   เดือน
                 </label>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <Select value={selectedMonth} onValueChange={onChangeSearchMonth}>
                   <SelectTrigger className="w-full hover:border-blue-300 transition-colors">
                     <SelectValue />
                   </SelectTrigger>
@@ -731,7 +892,7 @@ export default function PropertyLayout() {
               {/* Year Selection */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">ปี</label>
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <Select value={selectedYear} onValueChange={onChangeSearchYear}>
                   <SelectTrigger className="w-full hover:border-blue-300 transition-colors">
                     <SelectValue />
                   </SelectTrigger>
@@ -751,11 +912,13 @@ export default function PropertyLayout() {
                     <SelectValue placeholder="เลือกโซน" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zone-a">โซน A</SelectItem>
-                    <SelectItem value="zone-b">โซน B</SelectItem>
-                    <SelectItem value="zone-c">โซน C</SelectItem>
-                    <SelectItem value="zone-d">โซน D</SelectItem>
-                    <SelectItem value="all">ทั้งหมด</SelectItem>
+                    {zoneList.map((zone) => {
+                      return (
+                        <SelectItem key={zone.id} value={zone.id}>
+                          {zone.name}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -792,7 +955,17 @@ export default function PropertyLayout() {
                         className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                       >
                         <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.name}</span>
-                        <span className="text-sm font-medium text-gray-600">฿ {property.price} บาท</span>
+                        <div className="flex gap-2">
+                            <span className="text-sm text-gray-600">{property.price} บาท</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveConfirmedProperty(property.id)}
+                              className="h-6 w-6 p-0 hover:bg-red-100 text-red-500 hover:text-red-700"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                       </div>
                     ))}
 
@@ -929,6 +1102,36 @@ export default function PropertyLayout() {
         </DialogContent>
       </Dialog>
 
+      {/* Clear All Dates Confirm Dialog */}
+      <Dialog open={showClearConfirmDialog} onOpenChange={setShowClearConfirmDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-red-600 flex items-center gap-2">
+              <X className="h-5 w-5" />
+              ยืนยันการล้างข้อมูล
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600">คุณต้องการล้างข้อมูลการเลือกทั้งหมดใช่หรือไม่?</p>
+            <p className="text-xs text-gray-500 mt-2">การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowClearConfirmDialog(false)}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmClearAllDates}
+            >
+              ยืนยันการล้าง
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Header with notification */}
@@ -960,14 +1163,21 @@ export default function PropertyLayout() {
         <div className="flex-1 relative overflow-hidden bg-gray-50 min-h-[300px] lg:min-h-0">
           <div className="absolute inset-0">
             <div className="w-full h-full bg-white rounded-lg shadow-inner m-2 lg:m-4 overflow-hidden">
-              <CanvasMap
-                onCircleClick={handlePropertyClick}
-                onImageUpload={handleImageUpload}
-                onFilterChange={handleMapFilterChange}
-                selectedPropertyIds={selectedPropertyIds}
-                onExternalCircleUpdate={externalCircleUpdateRef}
-                onCirclesChange={setCircles}
-              />
+              <Spinner loading={isLoadingUnitMatrix}>
+                <CanvasMap
+                  backgroundImageUrl={canvasBackgroundImage}
+                  onCircleClick={handlePropertyClick}
+                  onImageUpload={handleImageUpload}
+                  onFilterChange={handleMapFilterChange}
+                  selectedPropertyIds={selectedPropertyIds}
+                  onExternalCircleUpdate={externalCircleUpdateRef}
+                  onCirclesChange={setCircles}
+                  filterUnitMatrix={searchUnitMatrix}
+                  onLoading={(isLoading) => {
+                    setIsLoadingUnitMatrix(isLoading)
+                  }}
+                />
+              </Spinner>
             </div>
           </div>
 
@@ -1211,7 +1421,7 @@ export default function PropertyLayout() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={clearAllDates}
+                        onClick={handleClearAllDates}
                         className="text-xs px-2 py-1 text-red-600 border-red-300 hover:bg-red-50 bg-transparent"
                       >
                         ล้าง

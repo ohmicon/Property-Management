@@ -27,3 +27,22 @@ export async function getUnitMatrixApi (payload: {
     throw error;
   }
 }
+
+export interface Zone {
+  zone_id: string,
+  zone_name: string,
+  zone_path_image: string
+}
+
+export async function getZonesByProjectApi (payload: {
+  project_id: string
+}) {
+  try{
+    const response = await axiosPublic.post<ApiResponse<Zone[]>>('/api/zones-by-project', payload);
+    return response.data
+  }
+  catch (error: any) {
+    console.error('Error fetching zones:', error);
+    throw error;
+  }
+}
