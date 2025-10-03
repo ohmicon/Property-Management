@@ -682,6 +682,7 @@ export default function PropertyLayout() {
       y: 100,
       r: 20,
       status: 'available' as const,
+      initStatus: 'available' as const,
       bookedBy: undefined,
       bookedAt: undefined
     }

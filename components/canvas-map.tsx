@@ -14,7 +14,8 @@ export interface Circle {
   x: number
   y: number
   r: number
-  status: "available" | "booked" | "pending" | "some available"
+  status: "available" | "booked" | "pending" | "some available",
+  initStatus: "available" | "booked" | "pending" | "some available", // สถานะเริ่มต้นจาก API
   id: string
   name: string;
   bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
@@ -128,7 +129,7 @@ export default function CanvasMap({
     } else if (circle.status === 'some available') {
       // partially booked status
       return {
-        fillColor: "rgba(227, 159, 95, 0.7)",
+        fillColor: "rgba(200, 200, 0, 0.7)",
         strokeColor: "rgba(200, 160, 0, 1)",
         strokeWidth: 2,
         cursor: 'default'
@@ -172,6 +173,7 @@ export default function CanvasMap({
             id: item.unit_id,
             r: 23,
             status: item.status_desc.toLocaleLowerCase(),
+            initStatus: item.status_desc.toLocaleLowerCase(),
             x: item.x,
             y: item.y,
             name: item.unit_number
@@ -749,7 +751,7 @@ export default function CanvasMap({
         let newBookedBy: string | undefined
         let newBookedAt: number | undefined
 
-        if (circle.status === 'available') {
+        if (circle.status === 'available' || circle.status === 'some available') {
           // Anyone can book available circles
           newStatus = 'pending'
           newBookedBy = currentUsername
@@ -758,7 +760,8 @@ export default function CanvasMap({
         } else if (circle.status === 'pending') {
           // Only the person who booked can cancel
           if (circle.bookedBy === currentUsername) {
-            newStatus = 'available'
+            console.log('circle.initStatus', circle)
+            newStatus = 'some available'
             newBookedBy = undefined
             newBookedAt = undefined
             toast.success(`ยกเลิกการจอง ${circle.name} สำเร็จ!`)
@@ -967,6 +970,7 @@ export default function CanvasMap({
 
   // Redraw when circles change
   useEffect(() => {
+    console.log(circles)
     draw()
   }, [circles, draw])
 
