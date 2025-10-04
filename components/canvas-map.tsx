@@ -88,7 +88,7 @@ export default function CanvasMap({
     // Check if this circle is selected in Property List
     const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
     
-    if (circle.status === 'available') {
+    if (circle.status === 'available' && circle.initStatus === 'available') {
       if (isSelectedInList) {
         // Selected in Property List - blue highlight
         return {
@@ -126,7 +126,7 @@ export default function CanvasMap({
           isDashed: true
         }
       }
-    } else if (circle.status === 'some available') {
+    } else if (circle.status === 'some available' || circle.initStatus === 'some available') {
       // partially booked status
       return {
         fillColor: "rgba(200, 200, 0, 0.7)",
@@ -761,7 +761,7 @@ export default function CanvasMap({
           // Only the person who booked can cancel
           if (circle.bookedBy === currentUsername) {
             console.log('circle.initStatus', circle)
-            newStatus = 'some available'
+            newStatus = circle.initStatus
             newBookedBy = undefined
             newBookedAt = undefined
             toast.success(`ยกเลิกการจอง ${circle.name} สำเร็จ!`)
@@ -970,7 +970,6 @@ export default function CanvasMap({
 
   // Redraw when circles change
   useEffect(() => {
-    console.log(circles)
     draw()
   }, [circles, draw])
 
