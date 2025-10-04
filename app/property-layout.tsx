@@ -212,6 +212,23 @@ export default function PropertyLayout() {
 
 
     if (unitBookingDateData.data && unitBookingDateData.data.length > 0){
+      // mock data date current month
+      // const newBookingDateList = unitBookingDateData.data.map((item) => {
+      //   const dateKeys = Object.keys(item.booking_date_list)
+      //   return {
+      //     ...item,
+      //     booking_date_list: dateKeys.reduce<{[key: string]: number}>((acc, dateKey) => {
+      //       const date = new Date(dateKey)
+      //       const day = date.getDate()
+      //       const month = dayjs().month()
+      //       const year = date.getFullYear()
+      //       const newKey = dayjs(new Date(year, month, day)).format('YYYY-MM-DD')
+      //       acc[newKey] = item.booking_date_list[dateKey]
+      //       return acc
+      //     }, {})
+      //   }
+      // })
+      // setUnitBookingDateList(newBookingDateList)
       setUnitBookingDateList(unitBookingDateData.data)
     }
     else{
@@ -699,21 +716,41 @@ export default function PropertyLayout() {
     })
   }
 
-  // Add this function inside the PropertyLayout component
-const handleRemoveConfirmedProperty = (propertyId: string) => {
-  setConfirmedProperties(prev => prev.filter(property => property.id !== propertyId))
+    // Add this function inside the PropertyLayout component
+  const handleRemoveConfirmedProperty = (propertyId: string) => {
+    setConfirmedProperties(prev => prev.filter(property => property.id !== propertyId))
 
-  // Show notification
-  toast({
-    title: "ยกเลิกรายการ",
-    description: `ยกเลิกการจองแปลง ${propertyId} แล้ว`,
-  })
+    // Show notification
+    toast({
+      title: "ยกเลิกรายการ",
+      description: `ยกเลิกการจองแปลง ${propertyId} แล้ว`,
+    })
 
-  // If no more confirmed properties, close confirmation dialog
-  if (confirmedProperties.length <= 1) {
-    setShowConfirmation(false)
+    // If no more confirmed properties, close confirmation dialog
+    if (confirmedProperties.length <= 1) {
+      setShowConfirmation(false)
+    }
   }
-}
+
+  const handleSetSelectDateAllMonth = (property: Circle) => {
+    // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
+    const startDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1))
+    const endDate = new Date(Date.UTC(currentYear, currentMonth, 0))
+    let dates = Array.from({ length: endDate.getDate() - startDate.getDate() + 1 }, (_, i) => new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000))
+
+    // กรองวันที่จองแล้วออก
+    dates = dates.filter(date => {
+      const dateKey = dayjs(date).format('YYYY-MM-DD')
+      const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
+      if (isSelectProperty === -1) {
+        return true
+      }
+      const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
+      const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
+      return !isBooked
+    })
+    setSelectedDates(dates.map(date => date.getDate()))
+  }
   
   // Handle property click function - handles selecting and deselecting properties
   const handlePropertyClick = useCallback((property: Circle) => {
@@ -744,6 +781,10 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
 
     if(showDetailPanel){
       setShowPropertyList(false)
+    }
+    if (activeTab === 'monthly'){
+      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
+      handleSetSelectDateAllMonth(property)
     }
     
     setShowPropertyList(true)
@@ -841,11 +882,16 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
     setIsShowOverlay(false)
     setIsLoadingUnitMatrix(false)
     setSelectedPropertyIds(new Set())
+    setSelectedDates([])
     if (externalCircleUpdateRef.current){
       const resetProperties = circles.map((property) => {
         return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
       })
       externalCircleUpdateRef.current(resetProperties)
+    }
+    if (activeTab === 'monthly'){
+      // ให้เด้งหน้าจองทันที
+      setShowConfirmDialog(true)
     }
   }
 
@@ -1322,7 +1368,7 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200 hover:bg-green-100 transition-colors">
                     <div className="w-5 h-5 bg-green-400 rounded-full border-2 border-green-500 shadow-sm"></div>
                     <div>
-                      <span className="text-sm font-medium text-gray-800">ว่าง</span>
+                      <span className="text-sm font-medium text-gray-800">ว่างทุกวัน</span>
                       <p className="text-xs text-gray-500">Available</p>
                     </div>
                   </div>
@@ -1335,11 +1381,19 @@ const handleRemoveConfirmedProperty = (propertyId: string) => {
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-100 border border-orange-400 hover:bg-orange-200 transition-colors">
+                    <div className="w-5 h-5 bg-orange-500 rounded-full border-2 border-orange-500 shadow-sm"></div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-800">กำลังจอง</span>
+                      <p className="text-xs text-gray-500">Pending</p>
+                    </div>
+                  </div>
+
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 transition-colors">
                     <div className="w-5 h-5 bg-yellow-400 rounded-full border-2 border-yellow-500 shadow-sm"></div>
                     <div>
-                      <span className="text-sm font-medium text-gray-800">จอง</span>
-                      <p className="text-xs text-gray-500">Pending</p>
+                      <span className="text-sm font-medium text-gray-800">จองได้บางวัน</span>
+                      <p className="text-xs text-gray-500">Some available</p>
                     </div>
                   </div>
                 </div>

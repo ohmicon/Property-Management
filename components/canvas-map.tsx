@@ -9,6 +9,7 @@ import { getOrCreateUsername, getCurrentUsername } from "@/lib/user-utils"
 import { toast } from "sonner"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
+import { cn } from "@/lib/utils"
 
 export interface Circle {
   x: number
@@ -58,6 +59,7 @@ export default function CanvasMap({
   const [showUploadArea, setShowUploadArea] = useState(false)
   const [showInstructions, setShowInstructions] = useState(true)
   const [filterMode, setFilterMode] = useState<"day" | "month">("month")
+  const [filterDay, setFilterDay] = useState<number | null>(null) // วันที่เลือก (สำหรับโหมด day)
   
   // Real-time booking hook
   const { socket, isConnected, isLoading, broadcastCircleUpdate } = useRealtimeBooking()
@@ -164,7 +166,7 @@ export default function CanvasMap({
           project_id: 'M004',
           year: filterUnitMatrix?.year || 2025,
           month: filterUnitMatrix?.month || 9,
-          day: filterUnitMatrix?.day || 0
+          day: filterUnitMatrix?.day || filterDay || 0 // 0 means whole month
         } 
         const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
@@ -242,7 +244,7 @@ export default function CanvasMap({
     if (hasReceivedSocketData){
       loadCircles()
     }
-  }, [hasReceivedSocketData, filterUnitMatrix])
+  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
@@ -832,6 +834,10 @@ export default function CanvasMap({
     [circles, handleCircleClick]
   )
 
+  const handleFilterDay = (day: number) => {
+    setFilterDay(day)
+  }
+
   // Handle status change with temporary booking logic
   const handleStatusChange = useCallback(
     (circle: Circle) => {
@@ -1108,7 +1114,12 @@ export default function CanvasMap({
                 type="checkbox"
                 id="showMonth"
                 checked={filterMode === "month"}
-                onChange={(e) => setFilterMode(e.target.checked ? "month" : "day")}
+                onChange={(e) => {
+                  setFilterMode(e.target.checked ? "month" : "day")
+                  if (e.target.checked) {
+                    setFilterDay(0)
+                  }
+                }}
                 className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
               />
               <label htmlFor="showMonth" className="text-sm text-gray-700">
@@ -1124,10 +1135,14 @@ export default function CanvasMap({
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
                     <button
                       key={day}
-                      className="w-6 h-6 text-xs border border-gray-300 rounded hover:bg-blue-100 hover:border-blue-300 transition-colors flex items-center justify-center"
+                      className={cn("w-6 h-6 text-xs border border-gray-300 rounded hover:bg-blue-100 hover:border-blue-300 transition-colors flex items-center justify-center", {
+                        "bg-blue-500 text-white border-blue-600": filterDay === day,
+                        "bg-white text-gray-700": filterDay !== day,
+                      })}
                       onClick={() => {
                         // Handle day selection
                         console.log(`Selected day: ${day}`)
+                        handleFilterDay(day)
                       }}
                     >
                       {day}
