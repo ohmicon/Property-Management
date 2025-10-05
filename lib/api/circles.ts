@@ -1,17 +1,17 @@
 import { Circle } from "@/components/canvas-map";
-import { ApiResponse } from "../axios";
+import { ApiResponse, axiosPublic } from "../axios";
 
 // ดึงข้อมูล circles ทั้งหมด
 export async function getCircles(): Promise<Circle[]> {
   try {
-    const response = await fetch('/api/circles', {
+    const response = await axiosPublic.get('/api/circles', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    const result: ApiResponse<Circle[]> = await response.json();
+    const result: ApiResponse<Circle[]> = await response.data;
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to fetch circles');
@@ -27,15 +27,15 @@ export async function getCircles(): Promise<Circle[]> {
 // อัปเดต circles ทั้งหมด
 export async function updateCircles(circles: Circle[]): Promise<Circle[]> {
   try {
-    const response = await fetch('/api/circles', {
+    const response = await axiosPublic('/api/circles', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ circles }),
+      data: JSON.stringify({ circles }),
     });
 
-    const result: ApiResponse<Circle[]> = await response.json();
+    const result: ApiResponse<Circle[]> = await response.data;
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to update circles');
@@ -51,15 +51,15 @@ export async function updateCircles(circles: Circle[]): Promise<Circle[]> {
 // อัปเดต circle เดียว
 export async function updateCircle(id: string, updates: Partial<Circle>): Promise<Circle> {
   try {
-    const response = await fetch('/api/circles', {
+    const response = await axiosPublic('/api/circles', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ id, updates }),
+      data: JSON.stringify({ id, updates }),
     });
 
-    const result: ApiResponse<Circle> = await response.json();
+    const result: ApiResponse<Circle> = await response.data;
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to update circle');
