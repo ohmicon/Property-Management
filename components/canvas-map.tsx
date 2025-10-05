@@ -9,12 +9,14 @@ import { getOrCreateUsername, getCurrentUsername } from "@/lib/user-utils"
 import { toast } from "sonner"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
+import { cn } from "@/lib/utils"
 
 export interface Circle {
   x: number
   y: number
   r: number
-  status: "available" | "booked" | "pending"
+  status: "available" | "booked" | "pending" | "some available",
+  initStatus: "available" | "booked" | "pending" | "some available", // สถานะเริ่มต้นจาก API
   id: string
   name: string;
   bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
@@ -33,7 +35,7 @@ interface CanvasMapProps {
   onImageUpload?: (file: File) => void
   onFilterChange?: (mode: "day" | "month") => void
   selectedPropertyIds?: Set<string>
-  onExternalCircleUpdate?: React.MutableRefObject<((circle: Circle) => void) | null> // ใช้ ref สำหรับ external update
+  onExternalCircleUpdate?: React.MutableRefObject<((circles: Circle[]) => void) | null> // ใช้ ref สำหรับ external update
   onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
   filterUnitMatrix?: SearchUnitMatrix
   onLoading?: (isLoading: boolean) => void 
@@ -57,6 +59,7 @@ export default function CanvasMap({
   const [showUploadArea, setShowUploadArea] = useState(false)
   const [showInstructions, setShowInstructions] = useState(true)
   const [filterMode, setFilterMode] = useState<"day" | "month">("month")
+  const [filterDay, setFilterDay] = useState<number | null>(null) // วันที่เลือก (สำหรับโหมด day)
   
   // Real-time booking hook
   const { socket, isConnected, isLoading, broadcastCircleUpdate } = useRealtimeBooking()
@@ -87,7 +90,7 @@ export default function CanvasMap({
     // Check if this circle is selected in Property List
     const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
     
-    if (circle.status === 'available') {
+    if (circle.status === 'available' && circle.initStatus === 'available') {
       if (isSelectedInList) {
         // Selected in Property List - blue highlight
         return {
@@ -125,6 +128,14 @@ export default function CanvasMap({
           isDashed: true
         }
       }
+    } else if (circle.status === 'some available' || circle.initStatus === 'some available') {
+      // partially booked status
+      return {
+        fillColor: "rgba(200, 200, 0, 0.7)",
+        strokeColor: "rgba(200, 160, 0, 1)",
+        strokeWidth: 2,
+        cursor: 'default'
+      }
     } else {
       // booked status
       return {
@@ -155,7 +166,7 @@ export default function CanvasMap({
           project_id: 'M004',
           year: filterUnitMatrix?.year || 2025,
           month: filterUnitMatrix?.month || 9,
-          day: filterUnitMatrix?.day || 0
+          day: filterUnitMatrix?.day || filterDay || 0 // 0 means whole month
         } 
         const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
@@ -164,6 +175,7 @@ export default function CanvasMap({
             id: item.unit_id,
             r: 23,
             status: item.status_desc.toLocaleLowerCase(),
+            initStatus: item.status_desc.toLocaleLowerCase(),
             x: item.x,
             y: item.y,
             name: item.unit_number
@@ -182,7 +194,9 @@ export default function CanvasMap({
             // If the circle is already booked in the API data, keep it as booked
             // This is authoritative and should never be overridden
             if (dbCircle.status === 'booked') {
-              console.log(`🔒 Circle ${dbCircle.id} is booked in API - preserving booked status`)
+              return dbCircle
+            }
+            else if (dbCircle.status === 'some available') {
               return dbCircle
             }
             
@@ -230,7 +244,7 @@ export default function CanvasMap({
     if (hasReceivedSocketData){
       loadCircles()
     }
-  }, [hasReceivedSocketData, filterUnitMatrix])
+  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
@@ -418,18 +432,19 @@ export default function CanvasMap({
   // Handle external circle updates (e.g., from Property List removal)
   useEffect(() => {
     if (onExternalCircleUpdate) {
-      const handleExternalUpdate = (updatedCircle: Circle) => {
-        console.log('🔄 Processing external circle update:', updatedCircle)
+      const handleExternalUpdate = (updatedCircles: Array<Circle>) => {
+        console.log('🔄 Processing external circles update:', updatedCircles)
         
-        // Validate the updated circle
-        if (!updatedCircle || !updatedCircle.id || !updatedCircle.status) {
-          console.error('❌ Invalid external circle update:', updatedCircle)
+        // Validate the updated circles
+        if (!updatedCircles || updatedCircles.length === 0) {
+          console.error('❌ Invalid external circles update:', updatedCircles)
           return
         }
         
         setCircles(prevCircles => {
           const newCircles = prevCircles.map(circle => {
-            if (circle.id === updatedCircle.id) {
+            const updatedCircle = updatedCircles.find(c => c.id === circle.id)
+            if (updatedCircle) {
               // Don't allow external updates to modify circles that are already booked from API
               // This is authoritative and should never be overridden
               if (circle.status === 'booked') {
@@ -461,7 +476,6 @@ export default function CanvasMap({
           return newCircles
         })
       }
-      
       // Assign the handler to the ref
       onExternalCircleUpdate.current = handleExternalUpdate
     }
@@ -739,7 +753,7 @@ export default function CanvasMap({
         let newBookedBy: string | undefined
         let newBookedAt: number | undefined
 
-        if (circle.status === 'available') {
+        if (circle.status === 'available' || circle.status === 'some available') {
           // Anyone can book available circles
           newStatus = 'pending'
           newBookedBy = currentUsername
@@ -748,7 +762,8 @@ export default function CanvasMap({
         } else if (circle.status === 'pending') {
           // Only the person who booked can cancel
           if (circle.bookedBy === currentUsername) {
-            newStatus = 'available'
+            console.log('circle.initStatus', circle)
+            newStatus = circle.initStatus
             newBookedBy = undefined
             newBookedAt = undefined
             toast.success(`ยกเลิกการจอง ${circle.name} สำเร็จ!`)
@@ -818,6 +833,10 @@ export default function CanvasMap({
     },
     [circles, handleCircleClick]
   )
+
+  const handleFilterDay = (day: number) => {
+    setFilterDay(day)
+  }
 
   // Handle status change with temporary booking logic
   const handleStatusChange = useCallback(
@@ -1095,7 +1114,12 @@ export default function CanvasMap({
                 type="checkbox"
                 id="showMonth"
                 checked={filterMode === "month"}
-                onChange={(e) => setFilterMode(e.target.checked ? "month" : "day")}
+                onChange={(e) => {
+                  setFilterMode(e.target.checked ? "month" : "day")
+                  if (e.target.checked) {
+                    setFilterDay(0)
+                  }
+                }}
                 className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
               />
               <label htmlFor="showMonth" className="text-sm text-gray-700">
@@ -1111,10 +1135,14 @@ export default function CanvasMap({
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
                     <button
                       key={day}
-                      className="w-6 h-6 text-xs border border-gray-300 rounded hover:bg-blue-100 hover:border-blue-300 transition-colors flex items-center justify-center"
+                      className={cn("w-6 h-6 text-xs border border-gray-300 rounded hover:bg-blue-100 hover:border-blue-300 transition-colors flex items-center justify-center", {
+                        "bg-blue-500 text-white border-blue-600": filterDay === day,
+                        "bg-white text-gray-700": filterDay !== day,
+                      })}
                       onClick={() => {
                         // Handle day selection
                         console.log(`Selected day: ${day}`)
+                        handleFilterDay(day)
                       }}
                     >
                       {day}
