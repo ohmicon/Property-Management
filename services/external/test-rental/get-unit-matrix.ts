@@ -20,9 +20,21 @@ export const getUnitMatrixService = async ({ project_id, year, month, day }: IPa
       .input("Day", sql.Int, day)
       .execute(`SP_DAILY_MATRIX`);
 
+    // mock price
+
+    const newResult = result.recordset.map(item => {
+      if (!item.M_Price || item.M_Price === 0) {
+        item.M_Price = 200;
+      }
+      if (!item.D_Price || item.D_Price === 0) {
+        item.D_Price = 250;
+      }
+      return item;
+    })
+
     return {
       success: true,
-      data: result.recordset,
+      data: newResult,
       message: "Success"
     }
   }

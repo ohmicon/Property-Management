@@ -22,3 +22,28 @@ export async function getUnitBookingDateApi (payload: {
     throw error;
   }
 }
+
+export interface IPayloadBookUnit {
+  customer_id: string;
+  booking_date: string;
+  booking_type: string;
+  booking_month: number;
+  booking_year: number;
+  amount: number;
+  daily_booking_units: {
+    unit_id: string;
+    book_date: string;
+    amount: number;
+  }[];
+}
+
+export async function bookUnitApi (payload: IPayloadBookUnit): Promise<ApiResponse<boolean>> {
+  try{
+    const response = await axiosPublic.post<ApiResponse<boolean>>('/api/book-unit', payload);
+    return response.data
+  }
+  catch (error: any) {
+    console.error('Error fetching circles:', error);
+    throw error;
+  }
+}

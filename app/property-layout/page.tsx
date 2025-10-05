@@ -18,7 +18,7 @@ import ConnectionGuard from "@/components/connection-guard"
 import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 import Spinner from "@/components/ui/Spinner"
 import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
-import { getUnitBookingDateApi, UnitBookingDate } from "@/lib/api/unit-booking"
+import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit } from "@/lib/api/unit-booking"
 
 interface Property {
   id: string
@@ -28,11 +28,21 @@ interface Property {
   bookedAt?: number
   bookedBy?: string
   remainingTime?: number
+  m_price: number // ราคาเช่ารายเดือน
+  d_price: number // ราคาเช่ารายวัน
+  quantity?: number // จำนวนวันที่เลือก
+}
+
+interface CartProperty extends Property {
+  cartId: string
 }
 
 interface BookingDetail {
-  plotId: string
+  cartId: string
+  unit_id: string
+  unit_number: string
   date: string
+  type: "monthly" | "daily"
   amount: number
 }
 
@@ -42,12 +52,23 @@ interface ZoneDetail {
   imagePath: string;
 }
 
+interface CustomerDetail {
+  id: string;
+  memberId: string;
+  name: string;
+}
+
 export default function PropertyLayout() {
   // test project
   const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
 
   const [activeTab, setActiveTab] = useState("monthly")
+  const [customerData, setCustomerData] = useState<CustomerDetail | null>({
+    id: "4d8bcd8a-a6f9-4629-84a9-1556400fd7f9",
+    memberId: "C-2500027",
+    name: "สันติ รัตนชูวงค์"
+  })
   const [selectedMonth, setSelectedMonth] = useState(() => (new Date().getMonth() + 1).toString()) // เดือนปัจจุบัน
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString()) // ปีปัจจุบัน
   const [selectedZone, setSelectedZone] = useState("")
@@ -65,6 +86,7 @@ export default function PropertyLayout() {
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const [unitBookingDateList, setUnitBookingDateList] = useState<UnitBookingDate[]>([])
   const [disableDateList, setDisableDateList] = useState<{[key: string]: number}>({})
+  const [pendingBookingList, setPendingBookingList] = useState<BookingDetail[]>([])
   const { toast } = useToast()
 
   // Mock property data for the selected area
@@ -436,17 +458,18 @@ export default function PropertyLayout() {
   }
 
   const handleDateClick = (day: number) => {
-    if (activeTab === 'daily'){
-      // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
-      setIsLoadingUnitMatrix(true)
-      setIsShowOverlay(true)
-    }
     const today = new Date()
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
     if (selectedDate < todayStart) {
       return
+    }
+
+    if (activeTab === 'daily'){
+      // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
+      setIsLoadingUnitMatrix(true)
+      setIsShowOverlay(true)
     }
 
     if (isSelectingRange) {
@@ -465,7 +488,7 @@ export default function PropertyLayout() {
         setRangeStart(null)
         setIsSelectingRange(false)
         setShowConfirmation(true)
-        setConfirmedProperties([...bookingData])
+        // setConfirmedProperties([...bookingData])
       }
     } else {
       setSelectedDates((prev) => {
@@ -476,7 +499,7 @@ export default function PropertyLayout() {
         // Show confirmation only if there are dates selected
         if (newDates.length > 0) {
           setShowConfirmation(true)
-          setConfirmedProperties([...bookingData])
+          // setConfirmedProperties([...bookingData])
         } else {
           // Just clear the confirmation without showing dialog
           setIsLoadingUnitMatrix(false)
@@ -648,13 +671,6 @@ export default function PropertyLayout() {
     }
   }, [bookingData, selectedDates])
   
-  // Calculate total booking amount for confirmation dialog
-  const totalBookingAmount = useMemo(() => {
-    return bookingData.reduce((sum, property) => {
-      return sum + Number.parseFloat(property.price.replace(",", "")) * bookingSummary.totalDays
-    }, 0)
-  }, [bookingData, bookingSummary.totalDays])
-  
   // Handle removing a property from selection
   const handleRemoveProperty = (propertyId: string) => {
     // Remove from selectedPropertyIds
@@ -701,7 +717,9 @@ export default function PropertyLayout() {
       status: 'available' as const,
       initStatus: 'available' as const,
       bookedBy: undefined,
-      bookedAt: undefined
+      bookedAt: undefined,
+      m_price: 0,
+      d_price: 0,
     }
     
     // อัปเดต Canvas Map โดยตรงผ่าน external update handler
@@ -717,13 +735,14 @@ export default function PropertyLayout() {
   }
 
     // Add this function inside the PropertyLayout component
-  const handleRemoveConfirmedProperty = (propertyId: string) => {
-    setConfirmedProperties(prev => prev.filter(property => property.id !== propertyId))
+  const handleRemoveConfirmedProperty = (cartId: string) => {
+    setConfirmedProperties(prev => prev.filter(property => property.cartId !== cartId))
+    setPendingBookingList(prev => prev.filter(booking => booking.cartId !== cartId))
 
     // Show notification
     toast({
       title: "ยกเลิกรายการ",
-      description: `ยกเลิกการจองแปลง ${propertyId} แล้ว`,
+      description: `ยกเลิกการจองหมายเลข ${cartId} แล้ว`,
     })
 
     // If no more confirmed properties, close confirmation dialog
@@ -734,8 +753,8 @@ export default function PropertyLayout() {
 
   const handleSetSelectDateAllMonth = (property: Circle) => {
     // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-    const startDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1))
-    const endDate = new Date(Date.UTC(currentYear, currentMonth, 0))
+    const startDate = dayjs().toDate()
+    const endDate = dayjs().endOf('month').toDate()
     let dates = Array.from({ length: endDate.getDate() - startDate.getDate() + 1 }, (_, i) => new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000))
 
     // กรองวันที่จองแล้วออก
@@ -759,7 +778,9 @@ export default function PropertyLayout() {
       id: property.id,
       name: property.name,
       price: "",
-      status: property.status
+      status: property.status,
+      m_price: property.m_price,
+      d_price: property.d_price,
     })
     if (selectedPropertyIds.has(property.id)) {
       // ถ้าถูกเลือกแล้ว ให้ยกเลิกการเลือก
@@ -793,7 +814,7 @@ export default function PropertyLayout() {
   }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
 
   const [showConfirmation, setShowConfirmation] = useState(false)
-  const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
+  const [confirmedProperties, setConfirmedProperties] = useState<CartProperty[]>([])
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [showClearConfirmDialog, setShowClearConfirmDialog] = useState(false)
   
@@ -810,11 +831,14 @@ export default function PropertyLayout() {
     const newPropertyList: Property[] = pendingCircles.map(circle => ({
       id: circle.id,
       name: circle.name,
-      price: Math.floor(Math.random() * 1000 + 1000).toString(),
+      // price: Math.floor(Math.random() * 1000 + 1000).toString(),
+      price: activeTab === 'monthly' ? circle.m_price.toLocaleString() : circle.d_price.toLocaleString(),
       status: circle.status,
       bookedAt: circle.bookedAt,
       bookedBy: circle.bookedBy,
-      remainingTime: circle.bookedAt ? 10 * 60 * 1000 - (Date.now() - circle.bookedAt) : undefined
+      remainingTime: circle.bookedAt ? 10 * 60 * 1000 - (Date.now() - circle.bookedAt) : undefined,
+      m_price: circle.m_price,
+      d_price: circle.d_price,
     }))
     
     setPropertyList(newPropertyList)
@@ -875,8 +899,43 @@ export default function PropertyLayout() {
     // You can add additional logic here to filter data based on the mode
   }
 
+  const handleSetBookingUnitData = (data: CartProperty[]) => {
+    // Set pending booking with booking data and select dates
+    let resultPendingBooking: BookingDetail[] = []
+    for (const bookDate of selectedDates){
+      for (const unit of data){
+        resultPendingBooking.push({
+          unit_id: unit.id,
+          unit_number: unit.name,
+          amount: activeTab === 'monthly' ? unit.m_price : unit.d_price,
+          date: dayjs(new Date(currentYear, currentMonth - 1, bookDate)).format('YYYY-MM-DD'),
+          type: activeTab === 'monthly' ? 'monthly' : 'daily',
+          cartId: unit.cartId!,
+        })
+      }
+    }
+    setPendingBookingList([...pendingBookingList, ...resultPendingBooking])
+  }
+
+  console.log(pendingBookingList, 'pendingBookingList')
+  console.log(confirmedProperties, 'confirmedProperties')
+
+  const handleSetSummaryConfirmedProperties = (data: Property[]) => {
+    const priceTypeKey = activeTab === 'monthly' ? 'm_price' : 'd_price'
+    const result = data.reduce<CartProperty[]>((acc, curr) => {
+      const existingPriceIndex = acc.findIndex((item) => item[priceTypeKey] === curr[priceTypeKey] && item.id === curr.id)
+      if (existingPriceIndex === -1) {
+        acc.push({...curr, quantity: selectedDates.length, cartId: Number(new Date().getTime()) + Math.random().toString()})
+      }
+      return acc
+    }, [])
+    return result
+  }
+
   const handleConfirm = () => {
-    setConfirmedProperties([...bookingData])
+    const newConfirmationProperties = handleSetSummaryConfirmedProperties(bookingData)
+    setConfirmedProperties([...confirmedProperties, ...newConfirmationProperties])
+    handleSetBookingUnitData(newConfirmationProperties)
     setShowConfirmation(true)
     setShowDetailPanel(false)
     setIsShowOverlay(false)
@@ -895,6 +954,13 @@ export default function PropertyLayout() {
     }
   }
 
+  // Calculate total booking amount for confirmation dialog
+  const totalBookingAmount = useMemo(() => {
+    return confirmedProperties.reduce((sum, property) => {
+      return sum + Number.parseFloat(property.price.replace(",", "")) * property.quantity!
+    }, 0)
+  }, [confirmedProperties])
+
   const handleVerifyBooking = () => {
     setShowConfirmDialog(true)
   }
@@ -909,33 +975,56 @@ export default function PropertyLayout() {
         description: "กรุณารอสักครู่",
         duration: 3000,
       })
+
+      // ทำการบันทึกการจองผ่าน API
+      const payloadBooking = {
+        customer_id: customerData?.memberId || "",
+        booking_date: dayjs().format('YYYY-MM-DD'),
+        booking_type: activeTab === 'monthly' ? 'monthly' : 'daily',
+        amount: totalBookingAmount,
+        booking_month: dayjs().month(),
+        booking_year: dayjs().year(),
+        daily_booking_units: pendingBookingList.map((item) => {
+          return {
+            unit_id: item.unit_number,
+            amount: item.amount,
+            book_date: item.date,
+            type: item.type,
+          }
+        })
+      } as IPayloadBookUnit
+
+      const result = await bookUnitApi(payloadBooking)
+      if (!result.data) {
+        throw new Error('ไม่สามารถบันทึกการจองได้')
+      }
     
       // สร้าง array สำหรับเก็บจุดที่อัพเดทสำเร็จ
       const updatedCircles: Circle[] = []
     
-      // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
-      for (const property of bookingData) {
-        try {
-          // เรียก API เพื่ออัพเดทสถานะเป็น booked
-          const updatedCircle = await updateCircleStatus(property.id, 'booked')
+      // // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
+      // for (const property of bookingData) {
+      //   try {
+      //     // เรียก API เพื่ออัพเดทสถานะเป็น booked
+      //     const updatedCircle = await updateCircleStatus(property.id, 'booked')
         
-          // เก็บจุดที่อัพเดทสำเร็จ
-          updatedCircles.push(updatedCircle)
+      //     // เก็บจุดที่อัพเดทสำเร็จ
+      //     updatedCircles.push(updatedCircle)
         
-          // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
-          if (externalCircleUpdateRef.current) {
-            externalCircleUpdateRef.current([updatedCircle])
-          }
-        } catch (error) {
-          console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
-        }
-      }
+      //     // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
+      //     if (externalCircleUpdateRef.current) {
+      //       externalCircleUpdateRef.current([updatedCircle])
+      //     }
+      //   } catch (error) {
+      //     console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
+      //   }
+      // }
       
       // แสดง toast สำเร็จ ถ้ามีการอัพเดทอย่างน้อย 1 จุด
-      if (updatedCircles.length > 0) {
+      if (result.data) {
         toast({
           title: "🎉 จองสำเร็จ!",
-          description: `จองแปลงที่ ${updatedCircles.map(c => c.id).join(", ")} เป็นจำนวน ${bookingSummary.totalDays} วัน ราคารวม ${bookingSummary.totalPrice} บาท`,
+          description: ``,
           duration: 5000,
         })
       } else {
@@ -1109,9 +1198,9 @@ export default function PropertyLayout() {
                     <CardTitle className="text-base text-gray-800">สรุปการเลือกแปลง</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {confirmedProperties.map((property) => (
+                    {confirmedProperties.map((property, index) => (
                       <div
-                        key={property.id}
+                        key={property.cartId}
                         className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                       >
                         <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.name}</span>
@@ -1120,7 +1209,7 @@ export default function PropertyLayout() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRemoveConfirmedProperty(property.id)}
+                              onClick={() => handleRemoveConfirmedProperty(property.cartId)}
                               className="h-6 w-6 p-0 hover:bg-red-100 text-red-500 hover:text-red-700"
                             >
                               <X className="w-3 h-3" />
@@ -1184,13 +1273,13 @@ export default function PropertyLayout() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {confirmedProperties.map((property) => (
-                    <TableRow key={property.id} className="hover:bg-blue-50 transition-colors">
+                  {confirmedProperties.map((property, index) => (
+                    <TableRow key={index} className="hover:bg-blue-50 transition-colors">
                       <TableCell className="text-sm font-medium text-blue-800">{property.name}</TableCell>
                       <TableCell className="text-sm">{Number.parseFloat(property.price).toLocaleString()}.00</TableCell>
-                      <TableCell className="text-sm">{bookingSummary.totalDays}</TableCell>
+                      <TableCell className="text-sm">{property.quantity || 1}</TableCell>
                       <TableCell className="text-sm font-medium">
-                        {(Number.parseFloat(property.price) * bookingSummary.totalDays).toLocaleString()}.00
+                        {(Number.parseFloat(property.price) * (property.quantity || 1)).toLocaleString()}.00
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1226,8 +1315,8 @@ export default function PropertyLayout() {
               
               <div className="bg-blue-50 p-3 border-t border-blue-100">
                 <div className="grid grid-cols-2 gap-2">
-                  {confirmedProperties.map((property) => (
-                    <div key={property.id} className="flex items-center gap-2">
+                  {confirmedProperties.map((property, index) => (
+                    <div key={index} className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                       <span className="text-xs text-gray-700">แปลงที่ {property.name}</span>
                     </div>
