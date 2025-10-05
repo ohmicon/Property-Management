@@ -33,7 +33,12 @@ interface Property {
   quantity?: number // จำนวนวันที่เลือก
 }
 
+interface CartProperty extends Property {
+  cartId: string
+}
+
 interface BookingDetail {
+  cartId: string
   unit_id: string
   unit_number: string
   date: string
@@ -730,13 +735,14 @@ export default function PropertyLayout() {
   }
 
     // Add this function inside the PropertyLayout component
-  const handleRemoveConfirmedProperty = (propertyId: string) => {
-    setConfirmedProperties(prev => prev.filter(property => property.id !== propertyId))
+  const handleRemoveConfirmedProperty = (cartId: string) => {
+    setConfirmedProperties(prev => prev.filter(property => property.cartId !== cartId))
+    setPendingBookingList(prev => prev.filter(booking => booking.cartId !== cartId))
 
     // Show notification
     toast({
       title: "ยกเลิกรายการ",
-      description: `ยกเลิกการจองแปลง ${propertyId} แล้ว`,
+      description: `ยกเลิกการจองหมายเลข ${cartId} แล้ว`,
     })
 
     // If no more confirmed properties, close confirmation dialog
@@ -808,7 +814,7 @@ export default function PropertyLayout() {
   }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
 
   const [showConfirmation, setShowConfirmation] = useState(false)
-  const [confirmedProperties, setConfirmedProperties] = useState<Property[]>([])
+  const [confirmedProperties, setConfirmedProperties] = useState<CartProperty[]>([])
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [showClearConfirmDialog, setShowClearConfirmDialog] = useState(false)
   
@@ -893,29 +899,33 @@ export default function PropertyLayout() {
     // You can add additional logic here to filter data based on the mode
   }
 
-  const handleSetBookingUnitData = (data: Property[]) => {
-    // Set pending booking with booking data and select date
+  const handleSetBookingUnitData = (data: CartProperty[]) => {
+    // Set pending booking with booking data and select dates
     let resultPendingBooking: BookingDetail[] = []
     for (const bookDate of selectedDates){
-      for (const unit of bookingData){
+      for (const unit of data){
         resultPendingBooking.push({
           unit_id: unit.id,
           unit_number: unit.name,
           amount: activeTab === 'monthly' ? unit.m_price : unit.d_price,
           date: dayjs(new Date(currentYear, currentMonth - 1, bookDate)).format('YYYY-MM-DD'),
           type: activeTab === 'monthly' ? 'monthly' : 'daily',
+          cartId: unit.cartId!,
         })
       }
     }
-    setPendingBookingList(resultPendingBooking)
+    setPendingBookingList([...pendingBookingList, ...resultPendingBooking])
   }
+
+  console.log(pendingBookingList, 'pendingBookingList')
+  console.log(confirmedProperties, 'confirmedProperties')
 
   const handleSetSummaryConfirmedProperties = (data: Property[]) => {
     const priceTypeKey = activeTab === 'monthly' ? 'm_price' : 'd_price'
-    const result = data.reduce<Property[]>((acc, curr) => {
+    const result = data.reduce<CartProperty[]>((acc, curr) => {
       const existingPriceIndex = acc.findIndex((item) => item[priceTypeKey] === curr[priceTypeKey] && item.id === curr.id)
       if (existingPriceIndex === -1) {
-        acc.push({...curr, quantity: selectedDates.length})
+        acc.push({...curr, quantity: selectedDates.length, cartId: Number(new Date().getTime()) + Math.random().toString()})
       }
       return acc
     }, [])
@@ -925,7 +935,7 @@ export default function PropertyLayout() {
   const handleConfirm = () => {
     const newConfirmationProperties = handleSetSummaryConfirmedProperties(bookingData)
     setConfirmedProperties([...confirmedProperties, ...newConfirmationProperties])
-    handleSetBookingUnitData(bookingData)
+    handleSetBookingUnitData(newConfirmationProperties)
     setShowConfirmation(true)
     setShowDetailPanel(false)
     setIsShowOverlay(false)
@@ -992,29 +1002,29 @@ export default function PropertyLayout() {
       // สร้าง array สำหรับเก็บจุดที่อัพเดทสำเร็จ
       const updatedCircles: Circle[] = []
     
-      // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
-      for (const property of bookingData) {
-        try {
-          // เรียก API เพื่ออัพเดทสถานะเป็น booked
-          const updatedCircle = await updateCircleStatus(property.id, 'booked')
+      // // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
+      // for (const property of bookingData) {
+      //   try {
+      //     // เรียก API เพื่ออัพเดทสถานะเป็น booked
+      //     const updatedCircle = await updateCircleStatus(property.id, 'booked')
         
-          // เก็บจุดที่อัพเดทสำเร็จ
-          updatedCircles.push(updatedCircle)
+      //     // เก็บจุดที่อัพเดทสำเร็จ
+      //     updatedCircles.push(updatedCircle)
         
-          // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
-          if (externalCircleUpdateRef.current) {
-            externalCircleUpdateRef.current([updatedCircle])
-          }
-        } catch (error) {
-          console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
-        }
-      }
+      //     // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
+      //     if (externalCircleUpdateRef.current) {
+      //       externalCircleUpdateRef.current([updatedCircle])
+      //     }
+      //   } catch (error) {
+      //     console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
+      //   }
+      // }
       
       // แสดง toast สำเร็จ ถ้ามีการอัพเดทอย่างน้อย 1 จุด
-      if (updatedCircles.length > 0) {
+      if (result.data) {
         toast({
           title: "🎉 จองสำเร็จ!",
-          description: `จองแปลงที่ ${updatedCircles.map(c => c.id).join(", ")} เป็นจำนวน ${bookingSummary.totalDays} วัน ราคารวม ${bookingSummary.totalPrice} บาท`,
+          description: ``,
           duration: 5000,
         })
       } else {
@@ -1190,7 +1200,7 @@ export default function PropertyLayout() {
                   <CardContent className="space-y-3">
                     {confirmedProperties.map((property, index) => (
                       <div
-                        key={index}
+                        key={property.cartId}
                         className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                       >
                         <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.name}</span>
@@ -1199,7 +1209,7 @@ export default function PropertyLayout() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRemoveConfirmedProperty(property.id)}
+                              onClick={() => handleRemoveConfirmedProperty(property.cartId)}
                               className="h-6 w-6 p-0 hover:bg-red-100 text-red-500 hover:text-red-700"
                             >
                               <X className="w-3 h-3" />
