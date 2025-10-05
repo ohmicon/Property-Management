@@ -19,7 +19,7 @@ import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 import Spinner from "@/components/ui/Spinner"
 import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
 import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit } from "@/lib/api/unit-booking"
-
+import { useCustomerStore } from "../customer-store"; // เพิ่มบรรทัดนี้
 interface Property {
   id: string
   name: string;
@@ -62,6 +62,8 @@ export default function PropertyLayout() {
   // test project
   const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
+  const customer = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
+  console.log('customer', customer)
 
   const [activeTab, setActiveTab] = useState("monthly")
   const [customerData, setCustomerData] = useState<CustomerDetail | null>({
@@ -193,6 +195,7 @@ export default function PropertyLayout() {
     }
   }, [remainingTimes])
 
+
   useEffect(() => {
     const init = async () => {
       getZoneList()
@@ -202,8 +205,8 @@ export default function PropertyLayout() {
       setSelectedMonth("9")
     }
     init()
-  }, [])
-
+    
+  }, [customer?.id])
   const getZoneList = async () => {
     const zoneData = await getZonesByProjectApi({ project_id: projectId })
     if (zoneData.data && zoneData.data?.length > 0){

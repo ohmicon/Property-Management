@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Search, X } from "lucide-react";
-import { useCustomer } from "./customer-context";
+import { useCustomerStore } from "./customer-store"; // เปลี่ยนเป็น zustand
 import { useRouter } from "next/navigation";
 
 type ApiCustomer = {
@@ -13,7 +13,7 @@ type ApiCustomer = {
 };
 
 export default function SelectCustomer() {
-  const { setCustomer } = useCustomer();
+  const setCustomer = useCustomerStore((state) => state.setCustomer); // ใช้ zustand
   const router = useRouter();
   const [customers, setCustomers] = useState<ApiCustomer[]>([]);
   const [keyword, setKeyword] = useState("");

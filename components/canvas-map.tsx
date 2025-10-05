@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
 import { cn } from "@/lib/utils"
+import { useCustomerStore } from "@/app/customer-store"
 
 export interface Circle {
   x: number
@@ -86,7 +87,8 @@ export default function CanvasMap({
   
   // User info
   const [currentUsername, setCurrentUsername] = useState<string>('')
-
+  const customer = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
+  
   // Status colors - different styles for own vs others' bookings
   const getCircleStyle = (circle: Circle) => {
     // Check if this circle is selected in Property List

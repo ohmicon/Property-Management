@@ -1,18 +1,14 @@
 "use client"
 
 import PropertyLayout from "./property-layout/page"
-import { CustomerProvider, useCustomer } from "./customer-context"
+import { useCustomerStore } from "./customer-store"
 import SelectCustomer from "./select-customer"
 
 function MainPage() {
-  const { customer } = useCustomer();
+  const customer = useCustomerStore((state) => state.customer);
   return customer ? <PropertyLayout /> : <SelectCustomer />;
 }
 
 export default function HomePage() {
-  return (
-    <CustomerProvider>
-      <MainPage />
-    </CustomerProvider>
-  );
+  return <MainPage />;
 }
