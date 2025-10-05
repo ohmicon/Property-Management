@@ -21,6 +21,8 @@ export interface Circle {
   name: string;
   bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
   bookedAt?: number // Timestamp ของการจอง
+  m_price: number // ราคาเช่ารายเดือน
+  d_price: number // ราคาเช่ารายวัน
 }
 
 export interface SearchUnitMatrix {
@@ -178,7 +180,9 @@ export default function CanvasMap({
             initStatus: item.status_desc.toLocaleLowerCase(),
             x: item.x,
             y: item.y,
-            name: item.unit_number
+            name: item.unit_number,
+            m_price: item.m_price,
+            d_price: item.d_price
           } as Circle
         }) || []
         

@@ -28,11 +28,16 @@ interface Property {
   bookedAt?: number
   bookedBy?: string
   remainingTime?: number
+  m_price: number // ราคาเช่ารายเดือน
+  d_price: number // ราคาเช่ารายวัน
+  quantity?: number // จำนวนวันที่เลือก
 }
 
 interface BookingDetail {
-  plotId: string
+  unit_id: string
+  unit_number: string
   date: string
+  type: "monthly" | "daily"
   amount: number
 }
 
@@ -65,6 +70,7 @@ export default function PropertyLayout() {
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const [unitBookingDateList, setUnitBookingDateList] = useState<UnitBookingDate[]>([])
   const [disableDateList, setDisableDateList] = useState<{[key: string]: number}>({})
+  const [pendingBookingList, setPendingBookingList] = useState<BookingDetail[]>([])
   const { toast } = useToast()
 
   // Mock property data for the selected area
@@ -436,17 +442,18 @@ export default function PropertyLayout() {
   }
 
   const handleDateClick = (day: number) => {
-    if (activeTab === 'daily'){
-      // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
-      setIsLoadingUnitMatrix(true)
-      setIsShowOverlay(true)
-    }
     const today = new Date()
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
     if (selectedDate < todayStart) {
       return
+    }
+
+    if (activeTab === 'daily'){
+      // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
+      setIsLoadingUnitMatrix(true)
+      setIsShowOverlay(true)
     }
 
     if (isSelectingRange) {
@@ -701,7 +708,9 @@ export default function PropertyLayout() {
       status: 'available' as const,
       initStatus: 'available' as const,
       bookedBy: undefined,
-      bookedAt: undefined
+      bookedAt: undefined,
+      m_price: 0,
+      d_price: 0,
     }
     
     // อัปเดต Canvas Map โดยตรงผ่าน external update handler
@@ -734,8 +743,8 @@ export default function PropertyLayout() {
 
   const handleSetSelectDateAllMonth = (property: Circle) => {
     // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-    const startDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1))
-    const endDate = new Date(Date.UTC(currentYear, currentMonth, 0))
+    const startDate = dayjs().toDate()
+    const endDate = dayjs().endOf('month').toDate()
     let dates = Array.from({ length: endDate.getDate() - startDate.getDate() + 1 }, (_, i) => new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000))
 
     // กรองวันที่จองแล้วออก
@@ -759,7 +768,9 @@ export default function PropertyLayout() {
       id: property.id,
       name: property.name,
       price: "",
-      status: property.status
+      status: property.status,
+      m_price: property.m_price,
+      d_price: property.d_price,
     })
     if (selectedPropertyIds.has(property.id)) {
       // ถ้าถูกเลือกแล้ว ให้ยกเลิกการเลือก
@@ -810,11 +821,14 @@ export default function PropertyLayout() {
     const newPropertyList: Property[] = pendingCircles.map(circle => ({
       id: circle.id,
       name: circle.name,
-      price: Math.floor(Math.random() * 1000 + 1000).toString(),
+      // price: Math.floor(Math.random() * 1000 + 1000).toString(),
+      price: activeTab === 'monthly' ? circle.m_price.toLocaleString() : circle.d_price.toLocaleString(),
       status: circle.status,
       bookedAt: circle.bookedAt,
       bookedBy: circle.bookedBy,
-      remainingTime: circle.bookedAt ? 10 * 60 * 1000 - (Date.now() - circle.bookedAt) : undefined
+      remainingTime: circle.bookedAt ? 10 * 60 * 1000 - (Date.now() - circle.bookedAt) : undefined,
+      m_price: circle.m_price,
+      d_price: circle.d_price,
     }))
     
     setPropertyList(newPropertyList)
@@ -875,8 +889,39 @@ export default function PropertyLayout() {
     // You can add additional logic here to filter data based on the mode
   }
 
+  const handleSetBookingUnitData = (data: Property[]) => {
+    // Set pending booking with booking data and select date
+    let resultPendingBooking: BookingDetail[] = []
+    for (const bookDate of selectedDates){
+      for (const unit of bookingData){
+        resultPendingBooking.push({
+          unit_id: unit.id,
+          unit_number: unit.name,
+          amount: activeTab === 'monthly' ? unit.m_price : unit.d_price,
+          date: dayjs(new Date(currentYear, currentMonth - 1, bookDate)).format('YYYY-MM-DD'),
+          type: activeTab === 'monthly' ? 'monthly' : 'daily',
+        })
+      }
+    }
+    setPendingBookingList(resultPendingBooking)
+  }
+
+  const handleSetSummaryConfirmedProperties = (data: Property[]) => {
+    const priceTypeKey = activeTab === 'monthly' ? 'm_price' : 'd_price'
+    const result = data.reduce<Property[]>((acc, curr) => {
+      const existingPriceIndex = acc.findIndex((item) => item[priceTypeKey] === curr[priceTypeKey] && item.id === curr.id)
+      if (existingPriceIndex === -1) {
+        acc.push({...curr, quantity: selectedDates.length})
+      }
+      return acc
+    }, [])
+    return result
+  }
+
   const handleConfirm = () => {
-    setConfirmedProperties([...bookingData])
+    const confirmationProperties = handleSetSummaryConfirmedProperties(bookingData)
+    setConfirmedProperties(confirmationProperties)
+    handleSetBookingUnitData(bookingData)
     setShowConfirmation(true)
     setShowDetailPanel(false)
     setIsShowOverlay(false)
@@ -1188,9 +1233,9 @@ export default function PropertyLayout() {
                     <TableRow key={property.id} className="hover:bg-blue-50 transition-colors">
                       <TableCell className="text-sm font-medium text-blue-800">{property.name}</TableCell>
                       <TableCell className="text-sm">{Number.parseFloat(property.price).toLocaleString()}.00</TableCell>
-                      <TableCell className="text-sm">{bookingSummary.totalDays}</TableCell>
+                      <TableCell className="text-sm">{property.quantity || 1}</TableCell>
                       <TableCell className="text-sm font-medium">
-                        {(Number.parseFloat(property.price) * bookingSummary.totalDays).toLocaleString()}.00
+                        {(Number.parseFloat(property.price) * (property.quantity || 1)).toLocaleString()}.00
                       </TableCell>
                     </TableRow>
                   ))}
