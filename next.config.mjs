@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // basePath: '/booking-web',
+  // assetPrefix: '/booking-web',
   eslint: {
     ignoreDuringBuilds: true,
   },
