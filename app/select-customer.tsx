@@ -42,7 +42,7 @@ export default function SelectCustomer() {
       mobile: c.mobile,
       type: c.type,
     });
-    router.refresh(); // หรือ router.push("/property-layout") ถ้ามี route แยก
+    router.push("/property-layout"); // redirect ไปหน้า property-layout
   }
 
   return (
