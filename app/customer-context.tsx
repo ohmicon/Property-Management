@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState } from "react";
 
-type Customer = { id: string; name: string };
+type Customer = {
+  id: string;
+  memberId: string;
+  name: string;
+  citizenId: string;
+  mobile: string;
+  type: string;
+};
+
 type CustomerContextType = {
   customer: Customer | null;
   setCustomer: (customer: Customer) => void;

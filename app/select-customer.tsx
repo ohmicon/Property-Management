@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Search, X } from "lucide-react";
 import { useCustomer } from "./customer-context";
+import { useRouter } from "next/navigation";
 
 type ApiCustomer = {
   id: string;
@@ -13,6 +14,7 @@ type ApiCustomer = {
 
 export default function SelectCustomer() {
   const { setCustomer } = useCustomer();
+  const router = useRouter();
   const [customers, setCustomers] = useState<ApiCustomer[]>([]);
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,6 +31,18 @@ export default function SelectCustomer() {
     if (data.success) setCustomers(data.data);
     else setCustomers([]);
     setLoading(false);
+  }
+
+  function handleSelect(c: ApiCustomer) {
+    setCustomer({
+      id: c.id,
+      memberId: c.memberId,
+      name: c.fullName,
+      citizenId: c.citizenId,
+      mobile: c.mobile,
+      type: c.type,
+    });
+    router.refresh(); // หรือ router.push("/property-layout") ถ้ามี route แยก
   }
 
   return (
@@ -98,7 +112,7 @@ export default function SelectCustomer() {
                       <td>
                         <button
                           className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-                          // onClick={() => handleSelect(c)}
+                          onClick={() => handleSelect(c)}
                         >
                           เลือก
                         </button>
