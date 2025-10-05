@@ -16,9 +16,15 @@ interface IPayloadBookUnit {
 
 export const bookUnitController = async (payload: IPayloadBookUnit) => {
   try{
+    payload.booking_type = payload.booking_type.toLocaleLowerCase() === 'monthly' ? 'Monthly' : 'Daily';
     const result = await bookUnitsService(payload);
     if (!result.data) {
-      throw new Error(result.message);
+      return {
+        success: false,
+        error: 'ไม่สามารถบันทึกการจองได้',
+        data: null,
+        message: 'ไม่สามารถบันทึกการจองได้'
+      }
     }
     return result;
   }

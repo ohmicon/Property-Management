@@ -18,7 +18,7 @@ import ConnectionGuard from "@/components/connection-guard"
 import { updateCircleStatus, getCircles } from "@/lib/api/circles"
 import Spinner from "@/components/ui/Spinner"
 import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
-import { getUnitBookingDateApi, UnitBookingDate } from "@/lib/api/unit-booking"
+import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit } from "@/lib/api/unit-booking"
 
 interface Property {
   id: string
@@ -47,12 +47,23 @@ interface ZoneDetail {
   imagePath: string;
 }
 
+interface CustomerDetail {
+  id: string;
+  memberId: string;
+  name: string;
+}
+
 export default function PropertyLayout() {
   // test project
   const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
 
   const [activeTab, setActiveTab] = useState("monthly")
+  const [customerData, setCustomerData] = useState<CustomerDetail | null>({
+    id: "4d8bcd8a-a6f9-4629-84a9-1556400fd7f9",
+    memberId: "C-2500027",
+    name: "สันติ รัตนชูวงค์"
+  })
   const [selectedMonth, setSelectedMonth] = useState(() => (new Date().getMonth() + 1).toString()) // เดือนปัจจุบัน
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString()) // ปีปัจจุบัน
   const [selectedZone, setSelectedZone] = useState("")
@@ -472,7 +483,7 @@ export default function PropertyLayout() {
         setRangeStart(null)
         setIsSelectingRange(false)
         setShowConfirmation(true)
-        setConfirmedProperties([...bookingData])
+        // setConfirmedProperties([...bookingData])
       }
     } else {
       setSelectedDates((prev) => {
@@ -483,7 +494,7 @@ export default function PropertyLayout() {
         // Show confirmation only if there are dates selected
         if (newDates.length > 0) {
           setShowConfirmation(true)
-          setConfirmedProperties([...bookingData])
+          // setConfirmedProperties([...bookingData])
         } else {
           // Just clear the confirmation without showing dialog
           setIsLoadingUnitMatrix(false)
@@ -654,13 +665,6 @@ export default function PropertyLayout() {
       properties: bookingData.length,
     }
   }, [bookingData, selectedDates])
-  
-  // Calculate total booking amount for confirmation dialog
-  const totalBookingAmount = useMemo(() => {
-    return bookingData.reduce((sum, property) => {
-      return sum + Number.parseFloat(property.price.replace(",", "")) * bookingSummary.totalDays
-    }, 0)
-  }, [bookingData, bookingSummary.totalDays])
   
   // Handle removing a property from selection
   const handleRemoveProperty = (propertyId: string) => {
@@ -919,8 +923,8 @@ export default function PropertyLayout() {
   }
 
   const handleConfirm = () => {
-    const confirmationProperties = handleSetSummaryConfirmedProperties(bookingData)
-    setConfirmedProperties(confirmationProperties)
+    const newConfirmationProperties = handleSetSummaryConfirmedProperties(bookingData)
+    setConfirmedProperties([...confirmedProperties, ...newConfirmationProperties])
     handleSetBookingUnitData(bookingData)
     setShowConfirmation(true)
     setShowDetailPanel(false)
@@ -940,6 +944,13 @@ export default function PropertyLayout() {
     }
   }
 
+  // Calculate total booking amount for confirmation dialog
+  const totalBookingAmount = useMemo(() => {
+    return confirmedProperties.reduce((sum, property) => {
+      return sum + Number.parseFloat(property.price.replace(",", "")) * property.quantity!
+    }, 0)
+  }, [confirmedProperties])
+
   const handleVerifyBooking = () => {
     setShowConfirmDialog(true)
   }
@@ -954,6 +965,29 @@ export default function PropertyLayout() {
         description: "กรุณารอสักครู่",
         duration: 3000,
       })
+
+      // ทำการบันทึกการจองผ่าน API
+      const payloadBooking = {
+        customer_id: customerData?.memberId || "",
+        booking_date: dayjs().format('YYYY-MM-DD'),
+        booking_type: activeTab === 'monthly' ? 'monthly' : 'daily',
+        amount: totalBookingAmount,
+        booking_month: dayjs().month(),
+        booking_year: dayjs().year(),
+        daily_booking_units: pendingBookingList.map((item) => {
+          return {
+            unit_id: item.unit_number,
+            amount: item.amount,
+            book_date: item.date,
+            type: item.type,
+          }
+        })
+      } as IPayloadBookUnit
+
+      const result = await bookUnitApi(payloadBooking)
+      if (!result.data) {
+        throw new Error('ไม่สามารถบันทึกการจองได้')
+      }
     
       // สร้าง array สำหรับเก็บจุดที่อัพเดทสำเร็จ
       const updatedCircles: Circle[] = []
@@ -1154,9 +1188,9 @@ export default function PropertyLayout() {
                     <CardTitle className="text-base text-gray-800">สรุปการเลือกแปลง</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {confirmedProperties.map((property) => (
+                    {confirmedProperties.map((property, index) => (
                       <div
-                        key={property.id}
+                        key={index}
                         className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                       >
                         <span className="text-sm font-medium text-gray-800">แปลงแปลง {property.name}</span>
@@ -1229,8 +1263,8 @@ export default function PropertyLayout() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {confirmedProperties.map((property) => (
-                    <TableRow key={property.id} className="hover:bg-blue-50 transition-colors">
+                  {confirmedProperties.map((property, index) => (
+                    <TableRow key={index} className="hover:bg-blue-50 transition-colors">
                       <TableCell className="text-sm font-medium text-blue-800">{property.name}</TableCell>
                       <TableCell className="text-sm">{Number.parseFloat(property.price).toLocaleString()}.00</TableCell>
                       <TableCell className="text-sm">{property.quantity || 1}</TableCell>
@@ -1271,8 +1305,8 @@ export default function PropertyLayout() {
               
               <div className="bg-blue-50 p-3 border-t border-blue-100">
                 <div className="grid grid-cols-2 gap-2">
-                  {confirmedProperties.map((property) => (
-                    <div key={property.id} className="flex items-center gap-2">
+                  {confirmedProperties.map((property, index) => (
+                    <div key={index} className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                       <span className="text-xs text-gray-700">แปลงที่ {property.name}</span>
                     </div>

@@ -23,9 +23,19 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
   await transaction.begin();
 
   try{
+    const bookingIdRunning = await getBookingIdRunning();
+    if (!bookingIdRunning) {
+      return {
+        success: false,
+        error: 'ไม่สามารถสร้างรหัสการจองได้',
+        data: false,
+        message: 'ไม่สามารถสร้างรหัสการจองได้'
+      }
+    }
     const bookingQuery = `
       INSERT INTO [dbo].[Sys_Daily_Booking]
-      ([TransactionDate]
+      ([BookingID]
+      ,[TransactionDate]
       ,[BookingType]
       ,[CustomerID]
       ,[DailyID]
@@ -37,7 +47,8 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
       ,[CreatedAt])
     OUTPUT INSERTED.BookingID
     VALUES
-      (GETDATE()
+      (@BookingID
+      ,GETDATE()
       ,@BookingType
       ,@CustomerID
       ,@DailyID
@@ -53,6 +64,7 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
       .input("CustomerID", sql.NVarChar, payload.customer_id)
       .input("DailyID", sql.NVarChar, dayjs().format("YYYYMMDD"))
       .input("Amount", sql.Decimal(18,2), payload.amount)
+      .input("BookingID", sql.NVarChar, bookingIdRunning)
       .query<{ BookingID: string }>(bookingQuery);
     const bookingId = bookingResult.recordset[0].BookingID;
 
@@ -92,5 +104,34 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
       data: false,
       message: err.message
     }
+  }
+}
+
+export const getBookingIdRunning = async (): Promise<string | null> => {
+  try{
+    const prefix = `R-${dayjs().format("YYMMDD")}`;
+    const pool = await getConnection();
+    const result = await pool.request()
+      .query<{ BookingID: string }>(`
+        SELECT TOP 1 BookingID 
+        FROM Sys_Daily_Booking
+        WHERE BookingID LIKE '${prefix}%'
+        ORDER BY BookingID DESC
+      `);
+    
+    const bookingId = result.recordset[0]?.BookingID;
+    // R-250717004 format R-YYMMDDXXX
+    if (bookingId) {
+      const prefix = "R-";
+      const datePart = dayjs().format("YYMMDD");
+      const serialPart = bookingId.slice(-3);
+      const newSerial = String(Number(serialPart) + 1).padStart(3, '0');
+      return `${prefix}${datePart}${newSerial}`;
+    } else {
+      return `R-${dayjs().format("YYMMDD")}001`;
+    }
+  }
+  catch(err:any){
+    return null;
   }
 }

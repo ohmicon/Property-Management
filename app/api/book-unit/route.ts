@@ -1,9 +1,9 @@
 import { bookUnitController } from "@/controllers/book-unit";
+import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try{
-    const body = await request.json();
-    const payload = body.payload;
+    const payload = await request.json();
     if (!payload) {
       return {
         success: false,
@@ -13,14 +13,17 @@ export async function POST(request: Request) {
       }
     }
     const response = await bookUnitController(payload);
-    return response;
+    return NextResponse.json({
+      success: true,
+      data: response.data,
+      message: response.message
+    });
   }
   catch(err: any){
-    return {
-      success: false,
-      error: err.message,
+    return NextResponse.json({
+      success: true,
       data: false,
-      message: err.message
-    }
+      message: 'failed',
+    }, { status: 500 } );
   }
 }
