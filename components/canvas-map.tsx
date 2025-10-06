@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Upload, RotateCcw, ImageIcon, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { getCircles, updateCircleStatus } from "@/lib/api/circles"
-import { getOrCreateUsername, getCurrentUsername } from "@/lib/user-utils"
+import { getOrCreateUsername, getCurrentUsername, setCurrentUsernameStorage } from "@/lib/user-utils"
 import { toast } from "sonner"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
@@ -161,8 +161,9 @@ export default function CanvasMap({
         return
       }
       // setCurrentUsername(customer?.name) 
-      const username = getOrCreateUsername()
-      setCurrentUsername(username)
+      // const username = getOrCreateUsername()
+      setCurrentUsername(customer.memberId)
+      setCurrentUsernameStorage(customer.memberId)
       try {
         setIsLoadingCircles(true)
         if (onLoading) {
@@ -1087,7 +1088,7 @@ export default function CanvasMap({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-700">{currentUsername}</span>
+                <span className="text-sm font-medium text-gray-700">{customer?.name}</span>
               </div>
               
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gray-50 border border-gray-100">

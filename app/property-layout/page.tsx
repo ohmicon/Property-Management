@@ -67,19 +67,23 @@ type ApiCustomer = {
   type: string;
 };
 
+const mockCustomer = {
+  id: '4d8bcd8a-a6f9-4629-84a9-1556400fd7f9',
+  memberId: 'C-2500027',
+  name: 'สันติ รัตนชูวงค์',
+  citizenId: '3240200366303',
+  mobile: '0918349668',
+  type: 'ลูกค้า VIP',
+}
+
 export default function PropertyLayout() {
   // test project
   const setCustomer = useCustomerStore((state) => state.setCustomer)
 
   const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
-  const customer = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
+  const customerData = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
   const [activeTab, setActiveTab] = useState("monthly")
-  const [customerData, setCustomerData] = useState<CustomerDetail | null>({
-    id: "4d8bcd8a-a6f9-4629-84a9-1556400fd7f9",
-    memberId: "C-2500027",
-    name: "สันติ รัตนชูวงค์"
-  })
   const [selectedMonth, setSelectedMonth] = useState(() => (new Date().getMonth() + 1).toString()) // เดือนปัจจุบัน
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString()) // ปีปัจจุบัน
   const [selectedZone, setSelectedZone] = useState("")
@@ -229,11 +233,6 @@ export default function PropertyLayout() {
       mobile: c.mobile,
       type: c.type,
     });
-    setCustomerData({
-      id: c.id,
-      memberId: c.memberId,
-      name: c.fullName
-    });
     setShowCustomerDialog(false);
     // initializePropertyLayout();
   }
@@ -274,7 +273,7 @@ export default function PropertyLayout() {
     }
     init()
     setIsLoadingUnitMatrix(false)
-  }, [customer?.id])
+  }, [customerData?.id])
   const getZoneList = async () => {
     const zoneData = await getZonesByProjectApi({ project_id: projectId })
     if (zoneData.data && zoneData.data?.length > 0){
@@ -1135,6 +1134,15 @@ export default function PropertyLayout() {
     }
   }
 
+  const handleChangeDialogCustomer = (open: boolean) => {
+    const isProd = process.env.NODE_ENV === 'production'
+    console.log(isProd, open)
+    if (!isProd && !open){
+      setCustomer(mockCustomer)
+    }
+    setShowCustomerDialog(open)
+  }
+
   return (
     <ConnectionGuard
       isLoading={isLoading}
@@ -1452,7 +1460,7 @@ export default function PropertyLayout() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCustomerDialog} onOpenChange={setShowCustomerDialog}>
+      <Dialog open={showCustomerDialog} onOpenChange={handleChangeDialogCustomer}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
             <DialogTitle className="text-xl font-medium text-gray-800">ค้นหาชื่อลูกค้า</DialogTitle>
