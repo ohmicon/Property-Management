@@ -64,6 +64,7 @@ export default function CanvasMap({
   const [filterMode, setFilterMode] = useState<"day" | "month">("month")
   const [filterDay, setFilterDay] = useState<number | null>(null) // วันที่เลือก (สำหรับโหมด day)
   
+  const customer = useCustomerStore((state) => state.customer); 
   // Real-time booking hook
   const { socket, isConnected, isLoading, broadcastCircleUpdate } = useRealtimeBooking()
   
@@ -87,7 +88,7 @@ export default function CanvasMap({
   
   // User info
   const [currentUsername, setCurrentUsername] = useState<string>('')
-  const customer = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
+// ใช้ zustand อ่านข้อมูลลูกค้า
   
   // Status colors - different styles for own vs others' bookings
   const getCircleStyle = (circle: Circle) => {
@@ -152,12 +153,16 @@ export default function CanvasMap({
   }
 
   // Initialize username and load circles
-  useEffect(() => {
-    // Get or create username
-    const username = getOrCreateUsername()
-    setCurrentUsername(username)
+  useEffect(() =>  {
     
     const loadCircles = async () => {
+      await customer?.id
+      if (!customer?.id) {
+        return
+      }
+      // setCurrentUsername(customer?.name) 
+      const username = getOrCreateUsername()
+      setCurrentUsername(username)
       try {
         setIsLoadingCircles(true)
         if (onLoading) {
@@ -252,14 +257,14 @@ export default function CanvasMap({
       }
     }
 
-    if (hasReceivedSocketData){
+    if (hasReceivedSocketData && customer?.id) {
       loadCircles()
     }
-  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
+  }, [customer?.id, hasReceivedSocketData, filterUnitMatrix, filterDay])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
-    if (!socket || !isConnected) return
+    if (!socket || !isConnected ) return
 
     const handleCircleUpdate = (updatedCircle: Circle) => {
       console.log('📡 Received real-time circle update:', updatedCircle)

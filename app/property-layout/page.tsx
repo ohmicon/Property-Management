@@ -74,7 +74,6 @@ export default function PropertyLayout() {
   const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
   const customer = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
-  console.log('customer', customer)
   const [activeTab, setActiveTab] = useState("monthly")
   const [customerData, setCustomerData] = useState<CustomerDetail | null>({
     id: "4d8bcd8a-a6f9-4629-84a9-1556400fd7f9",
@@ -265,15 +264,16 @@ export default function PropertyLayout() {
   // }
 
   useEffect(() => {
-    // const init = async () => {
+    const init = async () => {
+      setIsLoadingUnitMatrix(true)
       getZoneList()
       getUnitBookingDate()
 
     //init search
       setSelectedMonth("9")
-    // }
-    // init()
-    
+    }
+    init()
+    setIsLoadingUnitMatrix(false)
   }, [customer?.id])
   const getZoneList = async () => {
     const zoneData = await getZonesByProjectApi({ project_id: projectId })
@@ -1456,9 +1456,6 @@ export default function PropertyLayout() {
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
             <DialogTitle className="text-xl font-medium text-gray-800">ค้นหาชื่อลูกค้า</DialogTitle>
-            <DialogClose className="text-gray-400 hover:text-gray-600">
-              <X size={24} />
-            </DialogClose>
           </DialogHeader>
 
           <div className="flex-1 overflow-auto p-1">
