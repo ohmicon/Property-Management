@@ -1460,7 +1460,11 @@ export default function PropertyLayout() {
       </Dialog>
 
       <Dialog open={showCustomerDialog} onOpenChange={handleChangeDialogCustomer}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent
+        className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
             <DialogTitle className="text-xl font-medium text-gray-800">ค้นหาชื่อลูกค้า</DialogTitle>
           </DialogHeader>
@@ -1540,7 +1544,7 @@ export default function PropertyLayout() {
             </div>
           </div>
 
-          <div className="flex justify-end px-6 py-4 border-t bg-gray-50">
+          {/* <div className="flex justify-end px-6 py-4 border-t bg-gray-50">
             <Button 
               variant="outline" 
               onClick={() => setShowCustomerDialog(false)}
@@ -1548,7 +1552,7 @@ export default function PropertyLayout() {
             >
               ยกเลิก
             </Button>
-          </div>
+          </div> */}
         </DialogContent>
       </Dialog>
 
