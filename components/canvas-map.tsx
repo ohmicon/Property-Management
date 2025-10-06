@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Upload, RotateCcw, ImageIcon, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { getCircles, updateCircleStatus } from "@/lib/api/circles"
-import { getOrCreateUsername, getCurrentUsername } from "@/lib/user-utils"
+import { getOrCreateUsername, getCurrentUsername, setCurrentUsernameStorage } from "@/lib/user-utils"
 import { toast } from "sonner"
 import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
 import { cn } from "@/lib/utils"
+import { useCustomerStore } from "@/app/customer-store"
 
 export interface Circle {
   x: number
@@ -63,6 +64,7 @@ export default function CanvasMap({
   const [filterMode, setFilterMode] = useState<"day" | "month">("month")
   const [filterDay, setFilterDay] = useState<number | null>(null) // วันที่เลือก (สำหรับโหมด day)
   
+  const customer = useCustomerStore((state) => state.customer); 
   // Real-time booking hook
   const { socket, isConnected, isLoading, broadcastCircleUpdate } = useRealtimeBooking()
   
@@ -86,7 +88,8 @@ export default function CanvasMap({
   
   // User info
   const [currentUsername, setCurrentUsername] = useState<string>('')
-
+// ใช้ zustand อ่านข้อมูลลูกค้า
+  
   // Status colors - different styles for own vs others' bookings
   const getCircleStyle = (circle: Circle) => {
     // Check if this circle is selected in Property List
@@ -150,12 +153,17 @@ export default function CanvasMap({
   }
 
   // Initialize username and load circles
-  useEffect(() => {
-    // Get or create username
-    const username = getOrCreateUsername()
-    setCurrentUsername(username)
+  useEffect(() =>  {
     
     const loadCircles = async () => {
+      await customer?.id
+      if (!customer?.id) {
+        return
+      }
+      // setCurrentUsername(customer?.name) 
+      // const username = getOrCreateUsername()
+      setCurrentUsername(customer.memberId)
+      setCurrentUsernameStorage(customer.memberId)
       try {
         setIsLoadingCircles(true)
         if (onLoading) {
@@ -250,14 +258,14 @@ export default function CanvasMap({
       }
     }
 
-    if (hasReceivedSocketData){
+    if (hasReceivedSocketData && customer?.id) {
       loadCircles()
     }
-  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
+  }, [customer?.id, hasReceivedSocketData, filterUnitMatrix, filterDay])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
-    if (!socket || !isConnected) return
+    if (!socket || !isConnected ) return
 
     const handleCircleUpdate = (updatedCircle: Circle) => {
       console.log('📡 Received real-time circle update:', updatedCircle)
@@ -1080,7 +1088,7 @@ export default function CanvasMap({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-700">{currentUsername}</span>
+                <span className="text-sm font-medium text-gray-700">{customer?.name}</span>
               </div>
               
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gray-50 border border-gray-100">

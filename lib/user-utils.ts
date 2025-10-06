@@ -37,6 +37,10 @@ export function getCurrentUsername(): string {
   return localStorage.getItem('booking_username') || 'Anonymous';
 }
 
+export function setCurrentUsernameStorage(username: string): void {
+  localStorage.setItem('booking_username', username);
+}
+
 // Clear username (for testing)
 export function clearUsername(): void {
   localStorage.removeItem('booking_username');

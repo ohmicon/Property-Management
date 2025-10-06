@@ -1,7 +1,7 @@
 "use client"
 
-import PropertyLayout from "./property-layout"
+import PropertyLayout from "../app/property-layout/page"
 
-export default function SyntheticV0PageForDeployment() {
+export default function HomePage() {
   return <PropertyLayout />
 }
