@@ -20,6 +20,7 @@ import Spinner from "@/components/ui/Spinner"
 import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
 import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit } from "@/lib/api/unit-booking"
 import { useCustomerStore } from "../customer-store"; // เพิ่มบรรทัดนี้
+import { axiosPublic } from "@/lib/axios"
 interface Property {
   id: string
   name: string;
@@ -214,12 +215,12 @@ export default function PropertyLayout() {
   const [loading, setLoading] = useState(false)
   async function handleSearch() {
     setLoading(true);
-    const res = await fetch("/api/get-customers", {
+    const res = await axiosPublic("/api/get-customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword }),
+      data: JSON.stringify({ keyword }),
     });
-    const data = await res.json();
+    const data = await res.data;
     if (data.success) setCustomers(data.data);
     else setCustomers([]);
     setLoading(false);
