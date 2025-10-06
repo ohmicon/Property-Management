@@ -1,4 +1,5 @@
 import { Circle } from "@/components/canvas-map";
+import { axiosPublic } from "@/lib/axios";
 import { useCallback, useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
@@ -51,20 +52,24 @@ export function useRealtimeBooking() {
         console.log("🔧 Initializing socket connection...");
         
         // First, initialize the Socket.IO server
-        const response = await fetch('/api/socket');
-        if (!response.ok) {
+        const response = await axiosPublic.get('/api/socket');
+        if (!response.status || response.status !== 200) {
           throw new Error(`Failed to initialize server: ${response.status}`);
         }
         
-        const serverInfo = await response.json();
+        const serverInfo = response.data;
         console.log('📊 Server info:', serverInfo);
         
         // Connect to the Socket.IO server
-        const socketUrl = `${process.env.NEXT_PUBLIC_SOCKET_HOST}:${serverInfo.port || 8080}`;
+        const isProduction = process.env.NODE_ENV === 'production';
+        const socketUrl = isProduction
+          ? `${process.env.NEXT_PUBLIC_SOCKET_HOST}`
+          : `${process.env.NEXT_PUBLIC_SOCKET_HOST}:${serverInfo.port || 8080}`;
         // const socketUrl = `https://n05txbss-8080.asse.devtunnels.ms`;
         console.log(`🔌 Attempting to connect to: ${socketUrl}`);
         
         const newSocket = io(socketUrl, {
+          path: '' + (process.env.NEXT_PUBLIC_SOCKET_PATH || '/socket.io'),
           transports: ['polling'],
           timeout: 10000,
           reconnectionAttempts: 2,
