@@ -115,8 +115,8 @@ export default function PropertyLayout() {
   const [circles, setCircles] = useState<Circle[]>([])
   const [searchUnitMatrix, setSearchUnitMatrix] = useState<SearchUnitMatrix>({
     day: 0,
-    month: 9,
-    year: 2025
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear()
   })
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
@@ -268,8 +268,8 @@ export default function PropertyLayout() {
       getZoneList()
       getUnitBookingDate()
 
-    //init search
-      setSelectedMonth("9")
+      //init search
+      // setSelectedMonth("9")
     }
     init()
     setIsLoadingUnitMatrix(false)
@@ -298,7 +298,7 @@ export default function PropertyLayout() {
     const unitBookingDateData = await getUnitBookingDateApi({ 
       project_id: projectId,
       day: 0,
-      month: 9,
+      month: Number(selectedMonth),
       year: 2025
     })
 
@@ -1136,7 +1136,6 @@ export default function PropertyLayout() {
 
   const handleChangeDialogCustomer = (open: boolean) => {
     const isProd = process.env.NODE_ENV === 'production'
-    console.log(isProd, open)
     if (!isProd && !open){
       setCustomer(mockCustomer)
     }
