@@ -1462,7 +1462,12 @@ export default function PropertyLayout() {
       <Dialog open={showCustomerDialog} onOpenChange={handleChangeDialogCustomer}>
         <DialogContent
         className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden"
-        onInteractOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => {
+          const isProd = process.env.NODE_ENV === 'production'
+          if (isProd){
+            e.preventDefault()
+          }
+        }}
         onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
