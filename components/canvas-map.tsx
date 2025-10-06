@@ -172,7 +172,7 @@ export default function CanvasMap({
         } 
         const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
-        const circlesData = unitMatrixData.data?.map((item) => {
+        let circlesData = unitMatrixData.data?.map((item) => {
           return {
             id: item.unit_id,
             r: 23,
@@ -185,6 +185,11 @@ export default function CanvasMap({
             d_price: item.d_price
           } as Circle
         }) || []
+
+        // filter x, y null
+        circlesData = circlesData.filter((item) => {
+          return !(!item.x || item.x === 0) && !(!item.y || item.y === 0)
+        })
         
         // Request current temporary bookings state from server
         if (socket && socket.connected) {
