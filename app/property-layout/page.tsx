@@ -920,9 +920,6 @@ export default function PropertyLayout() {
     setPendingBookingList([...pendingBookingList, ...resultPendingBooking])
   }
 
-  console.log(pendingBookingList, 'pendingBookingList')
-  console.log(confirmedProperties, 'confirmedProperties')
-
   const handleSetSummaryConfirmedProperties = (data: Property[]) => {
     const priceTypeKey = activeTab === 'monthly' ? 'm_price' : 'd_price'
     const result = data.reduce<CartProperty[]>((acc, curr) => {
