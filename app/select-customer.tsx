@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Search, X } from "lucide-react";
 import { useCustomerStore } from "./customer-store"; // เปลี่ยนเป็น zustand
 import { useRouter } from "next/navigation";
+import { axiosPublic } from "@/lib/axios";
 
 type ApiCustomer = {
   id: string;
@@ -22,12 +23,12 @@ export default function SelectCustomer() {
   // Search API
   async function handleSearch() {
     setLoading(true);
-    const res = await fetch("/api/get-customers", {
+    const res = await axiosPublic("/api/get-customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword }),
+      data: JSON.stringify({ keyword }),
     });
-    const data = await res.json();
+    const data = await res.data;
     if (data.success) setCustomers(data.data);
     else setCustomers([]);
     setLoading(false);
