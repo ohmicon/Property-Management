@@ -590,7 +590,7 @@ export default function PropertyLayout() {
   }
 
   const handleClearAllDates = () => {
-        setShowClearConfirmDialog(true)
+    setShowClearConfirmDialog(true)
   }
 
   const confirmClearAllDates = async () => {
@@ -605,18 +605,7 @@ export default function PropertyLayout() {
       for (const property of propertyList) {
         try {
           // Call API to update circle status back to available
-          await updateCircleStatus(property.id, 'available')
-          
-          // Update circle in UI through external handler
-          if (externalCircleUpdateRef.current) {
-            const cancelledProperty: Circle = {
-              ...circles.find(c => c.id === property.id)!,
-              status: 'available',
-              bookedBy: undefined,
-              bookedAt: undefined
-            }
-            externalCircleUpdateRef.current([cancelledProperty])
-          }
+          handleRemoveProperty(property.id)
         } catch (error) {
           console.error(`Failed to cancel property ${property.id}:`, error)
         }
@@ -633,7 +622,8 @@ export default function PropertyLayout() {
       setSelectedPropertyIds(new Set())
       setShowDetailPanel(false)
       setShowClearConfirmDialog(false)
-
+      setIsLoadingUnitMatrix(false)
+      setIsShowOverlay(false)
       // Show success toast
       toast({
         title: "✅ ยกเลิกการเลือกแปลงสำเร็จ",
@@ -2027,7 +2017,7 @@ export default function PropertyLayout() {
                       {/* Customer */}
                         <div>
                           <label className="text-sm font-medium text-gray-700 block mb-1">
-                            ลูกค้า
+                            ลูกค้า<label className="text-red-500">*</label>
                           </label>
                           <div className="bg-white border border-teal-300 rounded-md p-3">
                             <div className="flex items-center justify-between gap-3">
@@ -2067,7 +2057,7 @@ export default function PropertyLayout() {
                     <div className="pt-4">
                       <Button
                         onClick={handleConfirm}
-                        disabled={bookingData.length === 0}
+                        disabled={bookingData.length === 0 || !customerData}
                         className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50"
                       >
                         Confirm
