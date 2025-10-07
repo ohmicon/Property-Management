@@ -209,7 +209,7 @@ export default function PropertyLayout() {
     }
   }, [remainingTimes])
   // Customer Selection Dialog State
-  const [showCustomerDialog, setShowCustomerDialog] = useState(true)
+  const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   const [customers, setCustomers] = useState<ApiCustomer[]>([])
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -235,33 +235,7 @@ export default function PropertyLayout() {
       type: c.type,
     });
     setShowCustomerDialog(false);
-    // initializePropertyLayout();
   }
-
-  // function initializePropertyLayout() {
-  //   const init = async () => {
-  //     setCircles([])
-  //     setUnitBookingDateList([])
-  //     setDisableDateList({})
-  //     setPropertyList([])
-  //     setBookingData([])
-  //     setSelectedPropertyIds(new Set())
-      
-  //     setSelectedMonth("9")
-  //     setSearchUnitMatrix({
-  //       day: 0,
-  //       month: 9,
-  //       year: 2025
-  //     })
-      
-  //     await getZoneList()
-  //     await getUnitBookingDate()
-  //   }
-    
-  //   if (customer?.id) {
-  //     init()
-  //   }
-  // }
 
   useEffect(() => {
     const init = async () => {
@@ -274,7 +248,7 @@ export default function PropertyLayout() {
     }
     init()
     setIsLoadingUnitMatrix(false)
-  }, [customerData?.id])
+  }, [])
   const getZoneList = async () => {
     const zoneData = await getZonesByProjectApi({ project_id: projectId })
     if (zoneData.data && zoneData.data?.length > 0){
@@ -1135,13 +1109,13 @@ export default function PropertyLayout() {
     }
   }
 
-  const handleChangeDialogCustomer = (open: boolean) => {
-    const isProd = process.env.NODE_ENV === 'production'
-    if (!isProd && !open){
-      setCustomer(mockCustomer)
-    }
-    setShowCustomerDialog(open)
-  }
+  // const handleChangeDialogCustomer = (open: boolean) => {
+  //   const isProd = process.env.NODE_ENV === 'production'
+  //   if (!isProd && !open){
+  //     setCustomer(mockCustomer)
+  //   }
+  //   setShowCustomerDialog(false)
+  // }
 
   return (
     <ConnectionGuard
@@ -1460,16 +1434,16 @@ export default function PropertyLayout() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCustomerDialog} onOpenChange={handleChangeDialogCustomer}>
+      <Dialog open={showCustomerDialog} onOpenChange={setShowCustomerDialog}>
         <DialogContent
         className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden"
-        onInteractOutside={(e) => {
-          const isProd = process.env.NODE_ENV === 'production'
-          if (isProd){
-            e.preventDefault()
-          }
-        }}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        // onInteractOutside={(e) => {
+        //   const isProd = process.env.NODE_ENV === 'production'
+        //   if (isProd){
+        //     e.preventDefault()
+        //   }
+        // }}
+        // onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
             <DialogTitle className="text-xl font-medium text-gray-800">ค้นหาชื่อลูกค้า</DialogTitle>
@@ -2051,14 +2025,26 @@ export default function PropertyLayout() {
                       </div>
 
                       {/* Customer */}
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 block mb-1">ลูกค้า</label>
-                        <div className="bg-white border border-teal-300 rounded-md p-2 flex justify-end">
-                          <Button className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded">
-                            สร้างลูกค้าใหม่
-                          </Button>
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 block mb-1">
+                            ลูกค้า
+                          </label>
+                          <div className="bg-white border border-teal-300 rounded-md p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1 text-gray-900 font-medium">
+                                {customerData ? customerData.name : (
+                                  <span className="text-gray-400 italic">ยังไม่ได้เลือกลูกค้า</span>
+                                )}
+                              </div>
+                              <Button
+                                className="bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-md shadow-sm transition-colors whitespace-nowrap"
+                                onClick={() => setShowCustomerDialog(true)}
+                              >
+                                + สร้างลูกค้าใหม่
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
 
                       {/* Number of Days */}
                       <div>
