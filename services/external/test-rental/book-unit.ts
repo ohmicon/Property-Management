@@ -10,6 +10,7 @@ interface IPayloadBookUnitsService {
   booking_month: number;
   booking_year: number;
   amount: number;
+  project_id: string;
   daily_booking_units: {
     unit_id: string;
     book_date: string;
@@ -35,6 +36,7 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
     const bookingQuery = `
       INSERT INTO [dbo].[Sys_Daily_Booking]
       ([BookingID]
+      ,[ProjectID]
       ,[TransactionDate]
       ,[BookingType]
       ,[CustomerID]
@@ -48,6 +50,7 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
     OUTPUT INSERTED.BookingID
     VALUES
       (@BookingID
+      ,@ProjectID
       ,GETDATE()
       ,@BookingType
       ,@CustomerID
@@ -65,6 +68,7 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
       .input("DailyID", sql.NVarChar, dayjs().format("YYYYMMDD"))
       .input("Amount", sql.Decimal(18,2), payload.amount)
       .input("BookingID", sql.NVarChar, bookingIdRunning)
+      .input("ProjectID", sql.NVarChar, payload.project_id)
       .query<{ BookingID: string }>(bookingQuery);
     const bookingId = bookingResult.recordset[0].BookingID;
 
