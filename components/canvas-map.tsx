@@ -30,6 +30,7 @@ export interface SearchUnitMatrix {
   year: number;
   month: number;
   day: number;
+  counter?: number;
 }
 
 interface CanvasMapProps {
@@ -41,7 +42,8 @@ interface CanvasMapProps {
   onExternalCircleUpdate?: React.MutableRefObject<((circles: Circle[]) => void) | null> // ใช้ ref สำหรับ external update
   onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
   filterUnitMatrix?: SearchUnitMatrix
-  onLoading?: (isLoading: boolean) => void 
+  onLoading?: (isLoading: boolean) => void
+  onChangeFilterDay?: (day: number) => void
 }
 
 export default function CanvasMap({ 
@@ -53,7 +55,8 @@ export default function CanvasMap({
   onExternalCircleUpdate, 
   onCirclesChange, 
   filterUnitMatrix,
-  onLoading 
+  onLoading,
+  onChangeFilterDay
 }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
@@ -1152,8 +1155,10 @@ export default function CanvasMap({
                       })}
                       onClick={() => {
                         // Handle day selection
-                        console.log(`Selected day: ${day}`)
                         handleFilterDay(day)
+                        if (onChangeFilterDay){
+                          onChangeFilterDay(day)
+                        }
                       }}
                     >
                       {day}

@@ -102,6 +102,7 @@ export default function PropertyLayout() {
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const [unitBookingDateList, setUnitBookingDateList] = useState<UnitBookingDate[]>([])
   const [disableDateList, setDisableDateList] = useState<{[key: string]: number}>({})
+  const [availableDateList, setAvilableDateList] = useState<{[key: string]: number}>({})
   const [pendingBookingList, setPendingBookingList] = useState<BookingDetail[]>([])
   const { toast } = useToast()
 
@@ -117,7 +118,8 @@ export default function PropertyLayout() {
   const [searchUnitMatrix, setSearchUnitMatrix] = useState<SearchUnitMatrix>({
     day: 0,
     month: new Date().getMonth() + 1,
-    year: new Date().getFullYear()
+    year: new Date().getFullYear(),
+    counter: 0
   })
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
@@ -241,7 +243,7 @@ export default function PropertyLayout() {
     const init = async () => {
       setIsLoadingUnitMatrix(true)
       getZoneList()
-      getUnitBookingDate()
+      getUnitBookingDate({})
 
       //init search
       // setSelectedMonth("9")
@@ -269,12 +271,12 @@ export default function PropertyLayout() {
     }
   }
 
-  const getUnitBookingDate = async () => {
+  const getUnitBookingDate = async (filter: { day?: number; month?: number; year?: number }) => {
     const unitBookingDateData = await getUnitBookingDateApi({ 
       project_id: projectId,
-      day: 0,
-      month: Number(selectedMonth),
-      year: 2025
+      day: filter.day || searchUnitMatrix.day,
+      month: filter.month || Number(selectedMonth),
+      year: filter.year || Number(selectedYear)
     })
 
 
@@ -317,12 +319,9 @@ export default function PropertyLayout() {
       // found
       if (isSelectUnit > -1) {
         // remove disable date
-        const dateKeyList = Object.keys(disableDateList)
-        // const newDisableDate = disableDateList.filter((date) => {
-        //   return !(unitBookingDate.booking_date_list[date] === 1)
-        // })
+        const DisableDateKeyList = Object.keys(disableDateList)
         setDisableDateList((prev) => {
-          dateKeyList.forEach((date) => {
+          DisableDateKeyList.forEach((date) => {
             const foundDate = unitBookingDate.booking_date_list[date] === 1
             if (foundDate){
               prev[date] = 0
@@ -330,6 +329,17 @@ export default function PropertyLayout() {
           })
           return prev
         })
+
+        // const availableDateKeyList = Object.keys(availableDateList)
+        // setAvilableDateList((prev) => {
+        //   availableDateKeyList.forEach((date) => {
+        //     const foundDate = unitBookingDate.booking_date_list[date] === 0
+        //     if (foundDate){
+        //       prev[date] = 0
+        //     }
+        //   })
+        //   return prev
+        // })
       }
       else{
         const dateKeyList = Object.keys(unitBookingDate.booking_date_list)
@@ -337,6 +347,14 @@ export default function PropertyLayout() {
           const isBooking = unitBookingDate.booking_date_list[dateKey] === 1
           if (isBooking) {
             setDisableDateList((prev) => {
+              prev[dateKey] = 1
+              return prev
+            })
+          }
+
+          const isAvaliable = unitBookingDate.booking_date_list[dateKey] === 0
+          if (isAvaliable) {
+            setAvilableDateList((prev) => {
               prev[dateKey] = 1
               return prev
             })
@@ -431,6 +449,14 @@ export default function PropertyLayout() {
     }
   }
 
+  const onChangeSerachDay = (value: number) => {
+    setSearchUnitMatrix({
+      day: value,
+      month: searchUnitMatrix.month,
+      year: searchUnitMatrix.year
+    })
+  }
+
   const onChangeSearchYear = (value: string) => {
     setSelectedYear(value)
     setSearchUnitMatrix({
@@ -438,6 +464,13 @@ export default function PropertyLayout() {
       month: searchUnitMatrix.month,
       year: Number(value)
     })
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const onChangeSearchMonth = (value: string) => {
@@ -447,6 +480,16 @@ export default function PropertyLayout() {
       month: Number(value),
       year: searchUnitMatrix.year
     })
+    getUnitBookingDate({
+      month: Number(value)
+    })
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const onChangeSelectBookType = (value: string) => {
@@ -463,6 +506,9 @@ export default function PropertyLayout() {
       })
       externalCircleUpdateRef.current(resetProperties)
     }
+    setTimeout(() => {
+      getUnitBookingDate({})
+    }, 50)
   }
 
   // Calendar highlighted days (booking days)
@@ -502,14 +548,20 @@ export default function PropertyLayout() {
     return months[month - 1]
   }
 
+  const handleDateAvaliableClick = (date: number, isAvaliable: boolean) => {
+    if (isAvaliable){
+      handleDateClick(date)
+    }
+  }
+
   const handleDateClick = (day: number) => {
     const today = new Date()
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
-    if (selectedDate < todayStart) {
-      return
-    }
+    // if (selectedDate < todayStart) {
+    //   return
+    // }
 
     if (activeTab === 'daily'){
       // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
@@ -587,6 +639,10 @@ export default function PropertyLayout() {
     setBookingData([])
     setSelectedPropertyIds(new Set())
     setShowDetailPanel(false)
+    setShowPropertyList(false)
+    setUnitBookingDateList([])
+    setAvilableDateList({})
+    setDisableDateList({})
   }
 
   const handleClearAllDates = () => {
@@ -786,28 +842,29 @@ export default function PropertyLayout() {
     }
   }
 
-  const handleSetSelectDateAllMonth = (property: Circle) => {
+  const handleSetSelectDateAllMonth = (newPropertyList: Property[], month: number) => {
     // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-    const startDate = dayjs().toDate()
-    const endDate = dayjs().endOf('month').toDate()
-    let dates = Array.from({ length: endDate.getDate() - startDate.getDate() + 1 }, (_, i) => new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000))
-
+    let dates = Array.from({ length: getDaysInMonth(month, currentYear) }, (_, i) => new Date(currentYear, month - 1, i + 1))
     // กรองวันที่จองแล้วออก
     dates = dates.filter(date => {
       const dateKey = dayjs(date).format('YYYY-MM-DD')
-      const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
-      if (isSelectProperty === -1) {
-        return true
-      }
-      const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
-      const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
-      return !isBooked
+      // const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
+      // if (isSelectProperty === -1 && bookingData.length > 0) {
+      //   return true
+      // }
+      const resultForBook = newPropertyList.find((property) => {
+        const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
+        const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
+        const isAvaliable = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 0 : false
+        return !isBooked && isAvaliable
+      })
+      return resultForBook
     })
     setSelectedDates(dates.map(date => date.getDate()))
   }
   
   // Handle property click function - handles selecting and deselecting properties
-  const handlePropertyClick = useCallback((property: Circle) => {
+  const handlePropertyClick = (property: Circle) => {
     // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
     handleDisableDateByProperty({
       id: property.id,
@@ -838,15 +895,11 @@ export default function PropertyLayout() {
     if(showDetailPanel){
       setShowPropertyList(false)
     }
-    if (activeTab === 'monthly'){
-      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-      handleSetSelectDateAllMonth(property)
-    }
     
     setShowPropertyList(true)
     // ปิดกรอบการจองเมื่อแสดงรายการแปลง
     // setShowDetailPanel(false)
-  }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
+  }
 
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<CartProperty[]>([])
@@ -879,6 +932,11 @@ export default function PropertyLayout() {
     setPropertyList(newPropertyList)
     // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
     setBookingData(newPropertyList)
+
+    if (activeTab === 'monthly' && unitBookingDateList.length > 0){
+      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
+      handleSetSelectDateAllMonth(newPropertyList, currentMonth)
+    }
     
     if (newPropertyList.length > 0) {
       setShowPropertyList(true)
@@ -894,7 +952,7 @@ export default function PropertyLayout() {
       }
     })
     setRemainingTimes(times)
-  }, [circles, selectedPropertyIds])
+  }, [circles, selectedPropertyIds, activeTab, currentMonth, unitBookingDateList])
 
   const handleViewDetails = () => {
     // ส่งข้อมูล propertyList ไปที่ booking และตรวจสอบว่ามีข้อมูลหรือไม่
@@ -1014,7 +1072,7 @@ export default function PropertyLayout() {
         booking_date: dayjs().format('YYYY-MM-DD'),
         booking_type: activeTab === 'monthly' ? 'monthly' : 'daily',
         amount: totalBookingAmount,
-        booking_month: dayjs().month(),
+        booking_month: dayjs().month() + 1,
         booking_year: dayjs().year(),
         daily_booking_units: pendingBookingList.map((item) => {
           return {
@@ -1067,6 +1125,12 @@ export default function PropertyLayout() {
           duration: 5000,
         })
       }
+      setSearchUnitMatrix({
+        ...searchUnitMatrix,
+        counter: (searchUnitMatrix?.counter || 0) + 1
+      })
+      clearAllDates()
+      await getUnitBookingDate({})
     } catch (error) {
       console.error("เกิดข้อผิดพลาดในการจอง:", error)
       toast({
@@ -1570,6 +1634,9 @@ export default function PropertyLayout() {
                   onLoading={(isLoading) => {
                     setIsLoadingUnitMatrix(isLoading)
                   }}
+                  onChangeFilterDay={(day: number) => {
+                    onChangeSerachDay(day)
+                  }}
                 />
               </Spinner>
             </div>
@@ -1904,6 +1971,7 @@ export default function PropertyLayout() {
                             const isPastDate = isCurrentMonth && selectedDate < todayStart
                             // const isDisable = (disableDateList[dateString] === 1) || isPastDate
                             const isDisable = (disableDateList[dateString] === 1) || bookingData.length === 0
+                            const isAvaliable = (availableDateList[dateString] === 1) || bookingData.length === 0
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
@@ -1912,10 +1980,14 @@ export default function PropertyLayout() {
                             return (
                               <button
                                 key={i}
-                                onClick={() => handleDateClick(day)}
+                                onClick={() => {
+                                  if (!isDisable && isAvaliable) {
+                                    handleDateAvaliableClick(day, (!isDisable && isAvaliable))
+                                  }
+                                }}
                                 disabled={isDisable}
                                 className={`text-xs text-center p-1 rounded transition-all duration-200 ${
-                                  isDisable
+                                  (isDisable || !isAvaliable)
                                     ? "text-gray-300 cursor-not-allowed bg-gray-50"
                                     : isSelected
                                       ? "bg-blue-500 text-white shadow-md transform scale-105 hover:scale-110"
