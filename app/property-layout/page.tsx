@@ -102,6 +102,7 @@ export default function PropertyLayout() {
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const [unitBookingDateList, setUnitBookingDateList] = useState<UnitBookingDate[]>([])
   const [disableDateList, setDisableDateList] = useState<{[key: string]: number}>({})
+  const [availableDateList, setAvilableDateList] = useState<{[key: string]: number}>({})
   const [pendingBookingList, setPendingBookingList] = useState<BookingDetail[]>([])
   const { toast } = useToast()
 
@@ -267,7 +268,7 @@ export default function PropertyLayout() {
     const init = async () => {
       setIsLoadingUnitMatrix(true)
       getZoneList()
-      getUnitBookingDate()
+      getUnitBookingDate({})
 
       //init search
       // setSelectedMonth("9")
@@ -295,12 +296,12 @@ export default function PropertyLayout() {
     }
   }
 
-  const getUnitBookingDate = async () => {
+  const getUnitBookingDate = async (filter: { day?: number; month?: number; year?: number }) => {
     const unitBookingDateData = await getUnitBookingDateApi({ 
       project_id: projectId,
-      day: 0,
-      month: Number(selectedMonth),
-      year: 2025
+      day: filter.day || searchUnitMatrix.day,
+      month: filter.month || Number(selectedMonth),
+      year: filter.year || Number(selectedYear)
     })
 
 
@@ -343,12 +344,9 @@ export default function PropertyLayout() {
       // found
       if (isSelectUnit > -1) {
         // remove disable date
-        const dateKeyList = Object.keys(disableDateList)
-        // const newDisableDate = disableDateList.filter((date) => {
-        //   return !(unitBookingDate.booking_date_list[date] === 1)
-        // })
+        const DisableDateKeyList = Object.keys(disableDateList)
         setDisableDateList((prev) => {
-          dateKeyList.forEach((date) => {
+          DisableDateKeyList.forEach((date) => {
             const foundDate = unitBookingDate.booking_date_list[date] === 1
             if (foundDate){
               prev[date] = 0
@@ -356,6 +354,17 @@ export default function PropertyLayout() {
           })
           return prev
         })
+
+        // const availableDateKeyList = Object.keys(availableDateList)
+        // setAvilableDateList((prev) => {
+        //   availableDateKeyList.forEach((date) => {
+        //     const foundDate = unitBookingDate.booking_date_list[date] === 0
+        //     if (foundDate){
+        //       prev[date] = 0
+        //     }
+        //   })
+        //   return prev
+        // })
       }
       else{
         const dateKeyList = Object.keys(unitBookingDate.booking_date_list)
@@ -363,6 +372,14 @@ export default function PropertyLayout() {
           const isBooking = unitBookingDate.booking_date_list[dateKey] === 1
           if (isBooking) {
             setDisableDateList((prev) => {
+              prev[dateKey] = 1
+              return prev
+            })
+          }
+
+          const isAvaliable = unitBookingDate.booking_date_list[dateKey] === 0
+          if (isAvaliable) {
+            setAvilableDateList((prev) => {
               prev[dateKey] = 1
               return prev
             })
@@ -457,6 +474,14 @@ export default function PropertyLayout() {
     }
   }
 
+  const onChangeSerachDay = (value: number) => {
+    setSearchUnitMatrix({
+      day: value,
+      month: searchUnitMatrix.month,
+      year: searchUnitMatrix.year
+    })
+  }
+
   const onChangeSearchYear = (value: string) => {
     setSelectedYear(value)
     setSearchUnitMatrix({
@@ -472,6 +497,9 @@ export default function PropertyLayout() {
       day: searchUnitMatrix.day,
       month: Number(value),
       year: searchUnitMatrix.year
+    })
+    getUnitBookingDate({
+      month: Number(value)
     })
   }
 
@@ -533,9 +561,9 @@ export default function PropertyLayout() {
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
-    if (selectedDate < todayStart) {
-      return
-    }
+    // if (selectedDate < todayStart) {
+    //   return
+    // }
 
     if (activeTab === 'daily'){
       // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
@@ -832,18 +860,19 @@ export default function PropertyLayout() {
     dates = dates.filter(date => {
       const dateKey = dayjs(date).format('YYYY-MM-DD')
       const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
-      if (isSelectProperty === -1) {
+      if (isSelectProperty === -1 && bookingData.length > 0) {
         return true
       }
       const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
       const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
-      return !isBooked
+      const isAvaliable = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 0 : false
+      return !isBooked && isAvaliable
     })
     setSelectedDates(dates.map(date => date.getDate()))
   }
   
   // Handle property click function - handles selecting and deselecting properties
-  const handlePropertyClick = useCallback((property: Circle) => {
+  const handlePropertyClick = (property: Circle) => {
     // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
     handleDisableDateByProperty({
       id: property.id,
@@ -882,7 +911,7 @@ export default function PropertyLayout() {
     setShowPropertyList(true)
     // ปิดกรอบการจองเมื่อแสดงรายการแปลง
     // setShowDetailPanel(false)
-  }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
+  }
 
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<CartProperty[]>([])
@@ -1050,7 +1079,7 @@ export default function PropertyLayout() {
         booking_date: dayjs().format('YYYY-MM-DD'),
         booking_type: activeTab === 'monthly' ? 'monthly' : 'daily',
         amount: totalBookingAmount,
-        booking_month: dayjs().month(),
+        booking_month: dayjs().month() + 1,
         booking_year: dayjs().year(),
         daily_booking_units: pendingBookingList.map((item) => {
           return {
@@ -1606,6 +1635,9 @@ export default function PropertyLayout() {
                   onLoading={(isLoading) => {
                     setIsLoadingUnitMatrix(isLoading)
                   }}
+                  onChangeFilterDay={(day: number) => {
+                    onChangeSerachDay(day)
+                  }}
                 />
               </Spinner>
             </div>
@@ -1940,6 +1972,7 @@ export default function PropertyLayout() {
                             const isPastDate = isCurrentMonth && selectedDate < todayStart
                             // const isDisable = (disableDateList[dateString] === 1) || isPastDate
                             const isDisable = (disableDateList[dateString] === 1) || bookingData.length === 0
+                            const isAvaliable = (availableDateList[dateString] === 1) || bookingData.length === 0
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
@@ -1951,7 +1984,7 @@ export default function PropertyLayout() {
                                 onClick={() => handleDateClick(day)}
                                 disabled={isDisable}
                                 className={`text-xs text-center p-1 rounded transition-all duration-200 ${
-                                  isDisable
+                                  (isDisable || !isAvaliable)
                                     ? "text-gray-300 cursor-not-allowed bg-gray-50"
                                     : isSelected
                                       ? "bg-blue-500 text-white shadow-md transform scale-105 hover:scale-110"
