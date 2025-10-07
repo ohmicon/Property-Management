@@ -118,7 +118,8 @@ export default function PropertyLayout() {
   const [searchUnitMatrix, setSearchUnitMatrix] = useState<SearchUnitMatrix>({
     day: 0,
     month: new Date().getMonth() + 1,
-    year: new Date().getFullYear()
+    year: new Date().getFullYear(),
+    counter: 0
   })
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
@@ -531,6 +532,9 @@ export default function PropertyLayout() {
       })
       externalCircleUpdateRef.current(resetProperties)
     }
+    setTimeout(() => {
+      getUnitBookingDate({})
+    }, 50)
   }
 
   // Calendar highlighted days (booking days)
@@ -568,6 +572,12 @@ export default function PropertyLayout() {
       "December",
     ]
     return months[month - 1]
+  }
+
+  const handleDateAvaliableClick = (date: number, isAvaliable: boolean) => {
+    if (isAvaliable){
+      handleDateClick(date)
+    }
   }
 
   const handleDateClick = (day: number) => {
@@ -656,6 +666,9 @@ export default function PropertyLayout() {
     setSelectedPropertyIds(new Set())
     setShowDetailPanel(false)
     setShowPropertyList(false)
+    setUnitBookingDateList([])
+    setAvilableDateList({})
+    setDisableDateList({})
   }
 
   const handleClearAllDates = () => {
@@ -956,7 +969,7 @@ export default function PropertyLayout() {
     // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
     setBookingData(newPropertyList)
 
-    if (activeTab === 'monthly'){
+    if (activeTab === 'monthly' && unitBookingDateList.length > 0){
       // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
       handleSetSelectDateAllMonth(newPropertyList, currentMonth)
     }
@@ -975,7 +988,7 @@ export default function PropertyLayout() {
       }
     })
     setRemainingTimes(times)
-  }, [circles, selectedPropertyIds, activeTab, currentMonth])
+  }, [circles, selectedPropertyIds, activeTab, currentMonth, unitBookingDateList])
 
   const handleViewDetails = () => {
     // ส่งข้อมูล propertyList ไปที่ booking และตรวจสอบว่ามีข้อมูลหรือไม่
@@ -1148,6 +1161,12 @@ export default function PropertyLayout() {
           duration: 5000,
         })
       }
+      setSearchUnitMatrix({
+        ...searchUnitMatrix,
+        counter: (searchUnitMatrix?.counter || 0) + 1
+      })
+      clearAllDates()
+      await getUnitBookingDate({})
     } catch (error) {
       console.error("เกิดข้อผิดพลาดในการจอง:", error)
       toast({
@@ -1997,7 +2016,11 @@ export default function PropertyLayout() {
                             return (
                               <button
                                 key={i}
-                                onClick={() => handleDateClick(day)}
+                                onClick={() => {
+                                  if (!isDisable && isAvaliable) {
+                                    handleDateAvaliableClick(day, (!isDisable && isAvaliable))
+                                  }
+                                }}
                                 disabled={isDisable}
                                 className={`text-xs text-center p-1 rounded transition-all duration-200 ${
                                   (isDisable || !isAvaliable)

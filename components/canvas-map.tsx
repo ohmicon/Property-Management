@@ -30,6 +30,7 @@ export interface SearchUnitMatrix {
   year: number;
   month: number;
   day: number;
+  counter?: number;
 }
 
 interface CanvasMapProps {
