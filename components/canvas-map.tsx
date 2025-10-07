@@ -30,6 +30,7 @@ export interface SearchUnitMatrix {
   year: number;
   month: number;
   day: number;
+  counter?: number;
 }
 
 interface CanvasMapProps {
@@ -41,7 +42,8 @@ interface CanvasMapProps {
   onExternalCircleUpdate?: React.MutableRefObject<((circles: Circle[]) => void) | null> // ใช้ ref สำหรับ external update
   onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
   filterUnitMatrix?: SearchUnitMatrix
-  onLoading?: (isLoading: boolean) => void 
+  onLoading?: (isLoading: boolean) => void
+  onChangeFilterDay?: (day: number) => void
 }
 
 export default function CanvasMap({ 
@@ -53,7 +55,8 @@ export default function CanvasMap({
   onExternalCircleUpdate, 
   onCirclesChange, 
   filterUnitMatrix,
-  onLoading 
+  onLoading,
+  onChangeFilterDay
 }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
@@ -153,17 +156,11 @@ export default function CanvasMap({
   }
 
   // Initialize username and load circles
-  useEffect(() =>  {
-    
+  useEffect(() => {
+    // ตั้งค่า user เข้า local storage
+    const username = getOrCreateUsername()
+    setCurrentUsername(username)
     const loadCircles = async () => {
-      await customer?.id
-      if (!customer?.id) {
-        return
-      }
-      // setCurrentUsername(customer?.name) 
-      // const username = getOrCreateUsername()
-      setCurrentUsername(customer.memberId)
-      setCurrentUsernameStorage(customer.memberId)
       try {
         setIsLoadingCircles(true)
         if (onLoading) {
@@ -177,7 +174,7 @@ export default function CanvasMap({
           year: filterUnitMatrix?.year || 2025,
           month: filterUnitMatrix?.month || 9,
           day: filterUnitMatrix?.day || filterDay || 0 // 0 means whole month
-        } 
+        }
         const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
         let circlesData = unitMatrixData.data?.map((item) => {
@@ -198,13 +195,13 @@ export default function CanvasMap({
         circlesData = circlesData.filter((item) => {
           return !(!item.x || item.x === 0) && !(!item.y || item.y === 0)
         })
-        
+
         // Request current temporary bookings state from server
         if (socket && socket.connected) {
           console.log('📡 Requesting current booking state from server...')
           socket.emit('requestCurrentState')
         }
-        
+
         // Process circles data from API
         setCircles(prevCircles => {
           const mergedCircles = circlesData.map(dbCircle => {
@@ -216,7 +213,7 @@ export default function CanvasMap({
             else if (dbCircle.status === 'some available') {
               return dbCircle
             }
-            
+
             // Check if this circle has a pending status in our current state
             const existingCircle = prevCircles.find(c => c.id === dbCircle.id)
             if (existingCircle && existingCircle.status === 'pending') {
@@ -224,7 +221,7 @@ export default function CanvasMap({
               console.log(`🔄 Preserving pending status for ${dbCircle.id} booked by ${existingCircle.bookedBy}`)
               return existingCircle
             }
-            
+
             // For available circles, use the API data
             return {
               ...dbCircle,
@@ -233,19 +230,19 @@ export default function CanvasMap({
               bookedAt: undefined
             }
           })
-          
+
           // Count booked and pending circles for logging
           const bookedCount = mergedCircles.filter(c => c.status === 'booked').length
           const pendingCount = mergedCircles.filter(c => c.status === 'pending').length
-          
+
           console.log(`✅ Loaded circles with preserved states: ${mergedCircles.length} total, ${bookedCount} booked, ${pendingCount} pending`)
-          
+
           // Update active bookings count for UI
           setActiveBookingsCount(pendingCount)
-          
+
           return mergedCircles
         })
-        
+
         console.log('👤 Current user:', currentUsername)
       } catch (error) {
         console.error('❌ Failed to load circles:', error)
@@ -258,10 +255,10 @@ export default function CanvasMap({
       }
     }
 
-    if (hasReceivedSocketData && customer?.id) {
+    if (hasReceivedSocketData) {
       loadCircles()
     }
-  }, [customer?.id, hasReceivedSocketData, filterUnitMatrix, filterDay])
+  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
@@ -1088,7 +1085,7 @@ export default function CanvasMap({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-sm font-medium text-gray-700">{customer?.name}</span>
+                <span className="text-sm font-medium text-gray-700">{currentUsername}</span>
               </div>
               
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gray-50 border border-gray-100">
@@ -1158,8 +1155,10 @@ export default function CanvasMap({
                       })}
                       onClick={() => {
                         // Handle day selection
-                        console.log(`Selected day: ${day}`)
                         handleFilterDay(day)
+                        if (onChangeFilterDay){
+                          onChangeFilterDay(day)
+                        }
                       }}
                     >
                       {day}

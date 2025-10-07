@@ -102,6 +102,7 @@ export default function PropertyLayout() {
   const [canvasBackgroundImage, setCanvasBackgroundImage] = useState<string | null>(null)
   const [unitBookingDateList, setUnitBookingDateList] = useState<UnitBookingDate[]>([])
   const [disableDateList, setDisableDateList] = useState<{[key: string]: number}>({})
+  const [availableDateList, setAvilableDateList] = useState<{[key: string]: number}>({})
   const [pendingBookingList, setPendingBookingList] = useState<BookingDetail[]>([])
   const { toast } = useToast()
 
@@ -117,7 +118,8 @@ export default function PropertyLayout() {
   const [searchUnitMatrix, setSearchUnitMatrix] = useState<SearchUnitMatrix>({
     day: 0,
     month: new Date().getMonth() + 1,
-    year: new Date().getFullYear()
+    year: new Date().getFullYear(),
+    counter: 0
   })
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
@@ -209,7 +211,7 @@ export default function PropertyLayout() {
     }
   }, [remainingTimes])
   // Customer Selection Dialog State
-  const [showCustomerDialog, setShowCustomerDialog] = useState(true)
+  const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   const [customers, setCustomers] = useState<ApiCustomer[]>([])
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -235,46 +237,20 @@ export default function PropertyLayout() {
       type: c.type,
     });
     setShowCustomerDialog(false);
-    // initializePropertyLayout();
   }
-
-  // function initializePropertyLayout() {
-  //   const init = async () => {
-  //     setCircles([])
-  //     setUnitBookingDateList([])
-  //     setDisableDateList({})
-  //     setPropertyList([])
-  //     setBookingData([])
-  //     setSelectedPropertyIds(new Set())
-      
-  //     setSelectedMonth("9")
-  //     setSearchUnitMatrix({
-  //       day: 0,
-  //       month: 9,
-  //       year: 2025
-  //     })
-      
-  //     await getZoneList()
-  //     await getUnitBookingDate()
-  //   }
-    
-  //   if (customer?.id) {
-  //     init()
-  //   }
-  // }
 
   useEffect(() => {
     const init = async () => {
       setIsLoadingUnitMatrix(true)
       getZoneList()
-      getUnitBookingDate()
+      getUnitBookingDate({})
 
       //init search
       // setSelectedMonth("9")
     }
     init()
     setIsLoadingUnitMatrix(false)
-  }, [customerData?.id])
+  }, [])
   const getZoneList = async () => {
     const zoneData = await getZonesByProjectApi({ project_id: projectId })
     if (zoneData.data && zoneData.data?.length > 0){
@@ -295,12 +271,12 @@ export default function PropertyLayout() {
     }
   }
 
-  const getUnitBookingDate = async () => {
+  const getUnitBookingDate = async (filter: { day?: number; month?: number; year?: number }) => {
     const unitBookingDateData = await getUnitBookingDateApi({ 
       project_id: projectId,
-      day: 0,
-      month: Number(selectedMonth),
-      year: 2025
+      day: filter.day || searchUnitMatrix.day,
+      month: filter.month || Number(selectedMonth),
+      year: filter.year || Number(selectedYear)
     })
 
 
@@ -343,12 +319,9 @@ export default function PropertyLayout() {
       // found
       if (isSelectUnit > -1) {
         // remove disable date
-        const dateKeyList = Object.keys(disableDateList)
-        // const newDisableDate = disableDateList.filter((date) => {
-        //   return !(unitBookingDate.booking_date_list[date] === 1)
-        // })
+        const DisableDateKeyList = Object.keys(disableDateList)
         setDisableDateList((prev) => {
-          dateKeyList.forEach((date) => {
+          DisableDateKeyList.forEach((date) => {
             const foundDate = unitBookingDate.booking_date_list[date] === 1
             if (foundDate){
               prev[date] = 0
@@ -356,6 +329,17 @@ export default function PropertyLayout() {
           })
           return prev
         })
+
+        // const availableDateKeyList = Object.keys(availableDateList)
+        // setAvilableDateList((prev) => {
+        //   availableDateKeyList.forEach((date) => {
+        //     const foundDate = unitBookingDate.booking_date_list[date] === 0
+        //     if (foundDate){
+        //       prev[date] = 0
+        //     }
+        //   })
+        //   return prev
+        // })
       }
       else{
         const dateKeyList = Object.keys(unitBookingDate.booking_date_list)
@@ -363,6 +347,14 @@ export default function PropertyLayout() {
           const isBooking = unitBookingDate.booking_date_list[dateKey] === 1
           if (isBooking) {
             setDisableDateList((prev) => {
+              prev[dateKey] = 1
+              return prev
+            })
+          }
+
+          const isAvaliable = unitBookingDate.booking_date_list[dateKey] === 0
+          if (isAvaliable) {
+            setAvilableDateList((prev) => {
               prev[dateKey] = 1
               return prev
             })
@@ -457,6 +449,14 @@ export default function PropertyLayout() {
     }
   }
 
+  const onChangeSerachDay = (value: number) => {
+    setSearchUnitMatrix({
+      day: value,
+      month: searchUnitMatrix.month,
+      year: searchUnitMatrix.year
+    })
+  }
+
   const onChangeSearchYear = (value: string) => {
     setSelectedYear(value)
     setSearchUnitMatrix({
@@ -464,6 +464,13 @@ export default function PropertyLayout() {
       month: searchUnitMatrix.month,
       year: Number(value)
     })
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const onChangeSearchMonth = (value: string) => {
@@ -473,6 +480,16 @@ export default function PropertyLayout() {
       month: Number(value),
       year: searchUnitMatrix.year
     })
+    getUnitBookingDate({
+      month: Number(value)
+    })
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const onChangeSelectBookType = (value: string) => {
@@ -489,6 +506,9 @@ export default function PropertyLayout() {
       })
       externalCircleUpdateRef.current(resetProperties)
     }
+    setTimeout(() => {
+      getUnitBookingDate({})
+    }, 50)
   }
 
   // Calendar highlighted days (booking days)
@@ -528,14 +548,20 @@ export default function PropertyLayout() {
     return months[month - 1]
   }
 
+  const handleDateAvaliableClick = (date: number, isAvaliable: boolean) => {
+    if (isAvaliable){
+      handleDateClick(date)
+    }
+  }
+
   const handleDateClick = (day: number) => {
     const today = new Date()
     const selectedDate = new Date(currentYear, currentMonth - 1, day)
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     
-    if (selectedDate < todayStart) {
-      return
-    }
+    // if (selectedDate < todayStart) {
+    //   return
+    // }
 
     if (activeTab === 'daily'){
       // ตรวจสอบว่าวันที่เลือกเป็นวันที่ผ่านมาแล้วหรือไม่
@@ -613,10 +639,14 @@ export default function PropertyLayout() {
     setBookingData([])
     setSelectedPropertyIds(new Set())
     setShowDetailPanel(false)
+    setShowPropertyList(false)
+    setUnitBookingDateList([])
+    setAvilableDateList({})
+    setDisableDateList({})
   }
 
   const handleClearAllDates = () => {
-        setShowClearConfirmDialog(true)
+    setShowClearConfirmDialog(true)
   }
 
   const confirmClearAllDates = async () => {
@@ -631,18 +661,7 @@ export default function PropertyLayout() {
       for (const property of propertyList) {
         try {
           // Call API to update circle status back to available
-          await updateCircleStatus(property.id, 'available')
-          
-          // Update circle in UI through external handler
-          if (externalCircleUpdateRef.current) {
-            const cancelledProperty: Circle = {
-              ...circles.find(c => c.id === property.id)!,
-              status: 'available',
-              bookedBy: undefined,
-              bookedAt: undefined
-            }
-            externalCircleUpdateRef.current([cancelledProperty])
-          }
+          handleRemoveProperty(property.id)
         } catch (error) {
           console.error(`Failed to cancel property ${property.id}:`, error)
         }
@@ -659,7 +678,8 @@ export default function PropertyLayout() {
       setSelectedPropertyIds(new Set())
       setShowDetailPanel(false)
       setShowClearConfirmDialog(false)
-
+      setIsLoadingUnitMatrix(false)
+      setIsShowOverlay(false)
       // Show success toast
       toast({
         title: "✅ ยกเลิกการเลือกแปลงสำเร็จ",
@@ -822,28 +842,29 @@ export default function PropertyLayout() {
     }
   }
 
-  const handleSetSelectDateAllMonth = (property: Circle) => {
+  const handleSetSelectDateAllMonth = (newPropertyList: Property[], month: number) => {
     // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-    const startDate = dayjs().toDate()
-    const endDate = dayjs().endOf('month').toDate()
-    let dates = Array.from({ length: endDate.getDate() - startDate.getDate() + 1 }, (_, i) => new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000))
-
+    let dates = Array.from({ length: getDaysInMonth(month, currentYear) }, (_, i) => new Date(currentYear, month - 1, i + 1))
     // กรองวันที่จองแล้วออก
     dates = dates.filter(date => {
       const dateKey = dayjs(date).format('YYYY-MM-DD')
-      const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
-      if (isSelectProperty === -1) {
-        return true
-      }
-      const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
-      const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
-      return !isBooked
+      // const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
+      // if (isSelectProperty === -1 && bookingData.length > 0) {
+      //   return true
+      // }
+      const resultForBook = newPropertyList.find((property) => {
+        const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
+        const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
+        const isAvaliable = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 0 : false
+        return !isBooked && isAvaliable
+      })
+      return resultForBook
     })
     setSelectedDates(dates.map(date => date.getDate()))
   }
   
   // Handle property click function - handles selecting and deselecting properties
-  const handlePropertyClick = useCallback((property: Circle) => {
+  const handlePropertyClick = (property: Circle) => {
     // ตรวจสอบว่าจุดนี้ถูกเลือกแล้วหรือไม่
     handleDisableDateByProperty({
       id: property.id,
@@ -874,15 +895,11 @@ export default function PropertyLayout() {
     if(showDetailPanel){
       setShowPropertyList(false)
     }
-    if (activeTab === 'monthly'){
-      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-      handleSetSelectDateAllMonth(property)
-    }
     
     setShowPropertyList(true)
     // ปิดกรอบการจองเมื่อแสดงรายการแปลง
     // setShowDetailPanel(false)
-  }, [selectedPropertyIds, handleRemoveProperty, onSelectBooking])
+  }
 
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<CartProperty[]>([])
@@ -915,6 +932,11 @@ export default function PropertyLayout() {
     setPropertyList(newPropertyList)
     // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
     setBookingData(newPropertyList)
+
+    if (activeTab === 'monthly' && unitBookingDateList.length > 0){
+      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
+      handleSetSelectDateAllMonth(newPropertyList, currentMonth)
+    }
     
     if (newPropertyList.length > 0) {
       setShowPropertyList(true)
@@ -930,7 +952,7 @@ export default function PropertyLayout() {
       }
     })
     setRemainingTimes(times)
-  }, [circles, selectedPropertyIds])
+  }, [circles, selectedPropertyIds, activeTab, currentMonth, unitBookingDateList])
 
   const handleViewDetails = () => {
     // ส่งข้อมูล propertyList ไปที่ booking และตรวจสอบว่ามีข้อมูลหรือไม่
@@ -1050,7 +1072,7 @@ export default function PropertyLayout() {
         booking_date: dayjs().format('YYYY-MM-DD'),
         booking_type: activeTab === 'monthly' ? 'monthly' : 'daily',
         amount: totalBookingAmount,
-        booking_month: dayjs().month(),
+        booking_month: dayjs().month() + 1,
         booking_year: dayjs().year(),
         daily_booking_units: pendingBookingList.map((item) => {
           return {
@@ -1103,6 +1125,12 @@ export default function PropertyLayout() {
           duration: 5000,
         })
       }
+      setSearchUnitMatrix({
+        ...searchUnitMatrix,
+        counter: (searchUnitMatrix?.counter || 0) + 1
+      })
+      clearAllDates()
+      await getUnitBookingDate({})
     } catch (error) {
       console.error("เกิดข้อผิดพลาดในการจอง:", error)
       toast({
@@ -1135,13 +1163,13 @@ export default function PropertyLayout() {
     }
   }
 
-  const handleChangeDialogCustomer = (open: boolean) => {
-    const isProd = process.env.NODE_ENV === 'production'
-    if (!isProd && !open){
-      setCustomer(mockCustomer)
-    }
-    setShowCustomerDialog(open)
-  }
+  // const handleChangeDialogCustomer = (open: boolean) => {
+  //   const isProd = process.env.NODE_ENV === 'production'
+  //   if (!isProd && !open){
+  //     setCustomer(mockCustomer)
+  //   }
+  //   setShowCustomerDialog(false)
+  // }
 
   return (
     <ConnectionGuard
@@ -1460,16 +1488,16 @@ export default function PropertyLayout() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCustomerDialog} onOpenChange={handleChangeDialogCustomer}>
+      <Dialog open={showCustomerDialog} onOpenChange={setShowCustomerDialog}>
         <DialogContent
         className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden"
-        onInteractOutside={(e) => {
-          const isProd = process.env.NODE_ENV === 'production'
-          if (isProd){
-            e.preventDefault()
-          }
-        }}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        // onInteractOutside={(e) => {
+        //   const isProd = process.env.NODE_ENV === 'production'
+        //   if (isProd){
+        //     e.preventDefault()
+        //   }
+        // }}
+        // onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
             <DialogTitle className="text-xl font-medium text-gray-800">ค้นหาชื่อลูกค้า</DialogTitle>
@@ -1605,6 +1633,9 @@ export default function PropertyLayout() {
                   filterUnitMatrix={searchUnitMatrix}
                   onLoading={(isLoading) => {
                     setIsLoadingUnitMatrix(isLoading)
+                  }}
+                  onChangeFilterDay={(day: number) => {
+                    onChangeSerachDay(day)
                   }}
                 />
               </Spinner>
@@ -1940,6 +1971,7 @@ export default function PropertyLayout() {
                             const isPastDate = isCurrentMonth && selectedDate < todayStart
                             // const isDisable = (disableDateList[dateString] === 1) || isPastDate
                             const isDisable = (disableDateList[dateString] === 1) || bookingData.length === 0
+                            const isAvaliable = (availableDateList[dateString] === 1) || bookingData.length === 0
 
                             if (!isCurrentMonth) {
                               return <div key={i} className="text-xs text-center p-1"></div>
@@ -1948,10 +1980,14 @@ export default function PropertyLayout() {
                             return (
                               <button
                                 key={i}
-                                onClick={() => handleDateClick(day)}
+                                onClick={() => {
+                                  if (!isDisable && isAvaliable) {
+                                    handleDateAvaliableClick(day, (!isDisable && isAvaliable))
+                                  }
+                                }}
                                 disabled={isDisable}
                                 className={`text-xs text-center p-1 rounded transition-all duration-200 ${
-                                  isDisable
+                                  (isDisable || !isAvaliable)
                                     ? "text-gray-300 cursor-not-allowed bg-gray-50"
                                     : isSelected
                                       ? "bg-blue-500 text-white shadow-md transform scale-105 hover:scale-110"
@@ -2051,14 +2087,26 @@ export default function PropertyLayout() {
                       </div>
 
                       {/* Customer */}
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 block mb-1">ลูกค้า</label>
-                        <div className="bg-white border border-teal-300 rounded-md p-2 flex justify-end">
-                          <Button className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded">
-                            สร้างลูกค้าใหม่
-                          </Button>
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 block mb-1">
+                            ลูกค้า<label className="text-red-500">*</label>
+                          </label>
+                          <div className="bg-white border border-teal-300 rounded-md p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1 text-gray-900 font-medium">
+                                {customerData ? customerData.name : (
+                                  <span className="text-gray-400 italic">ยังไม่ได้เลือกลูกค้า</span>
+                                )}
+                              </div>
+                              <Button
+                                className="bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-md shadow-sm transition-colors whitespace-nowrap"
+                                onClick={() => setShowCustomerDialog(true)}
+                              >
+                                + สร้างลูกค้าใหม่
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
 
                       {/* Number of Days */}
                       <div>
@@ -2081,7 +2129,7 @@ export default function PropertyLayout() {
                     <div className="pt-4">
                       <Button
                         onClick={handleConfirm}
-                        disabled={bookingData.length === 0}
+                        disabled={bookingData.length === 0 || !customerData}
                         className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50"
                       >
                         Confirm
