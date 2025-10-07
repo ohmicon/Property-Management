@@ -850,23 +850,24 @@ export default function PropertyLayout() {
     }
   }
 
-  const handleSetSelectDateAllMonth = (property: Circle) => {
+  const handleSetSelectDateAllMonth = (newPropertyList: Property[], month: number) => {
     // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-    const startDate = dayjs().toDate()
-    const endDate = dayjs().endOf('month').toDate()
-    let dates = Array.from({ length: endDate.getDate() - startDate.getDate() + 1 }, (_, i) => new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000))
-
+    let dates = Array.from({ length: getDaysInMonth(month, currentYear) }, (_, i) => new Date(currentYear, month - 1, i + 1))
     // กรองวันที่จองแล้วออก
     dates = dates.filter(date => {
       const dateKey = dayjs(date).format('YYYY-MM-DD')
-      const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
-      if (isSelectProperty === -1 && bookingData.length > 0) {
-        return true
-      }
-      const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
-      const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
-      const isAvaliable = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 0 : false
-      return !isBooked && isAvaliable
+      console.log(dateKey, 'dateskey')
+      // const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
+      // if (isSelectProperty === -1 && bookingData.length > 0) {
+      //   return true
+      // }
+      const resultForBook = newPropertyList.find((property) => {
+        const propertyHasBookDate = unitBookingDateList.find((item) => item.unit_number === property.name)
+        const isBooked = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 1 : false
+        const isAvaliable = propertyHasBookDate ? propertyHasBookDate.booking_date_list[dateKey] === 0 : false
+        return !isBooked && isAvaliable
+      })
+      return resultForBook
     })
     setSelectedDates(dates.map(date => date.getDate()))
   }
@@ -902,10 +903,6 @@ export default function PropertyLayout() {
 
     if(showDetailPanel){
       setShowPropertyList(false)
-    }
-    if (activeTab === 'monthly'){
-      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
-      handleSetSelectDateAllMonth(property)
     }
     
     setShowPropertyList(true)
@@ -944,6 +941,11 @@ export default function PropertyLayout() {
     setPropertyList(newPropertyList)
     // ซิงค์ bookingData ให้ตรงกับ propertyList ที่อัปเดต
     setBookingData(newPropertyList)
+
+    if (activeTab === 'monthly'){
+      // เลือกวันที่ทั้งหมดของเดือนปัจจุบันถ้าเป็นโหมด monthly
+      handleSetSelectDateAllMonth(newPropertyList, currentMonth)
+    }
     
     if (newPropertyList.length > 0) {
       setShowPropertyList(true)
@@ -959,7 +961,7 @@ export default function PropertyLayout() {
       }
     })
     setRemainingTimes(times)
-  }, [circles, selectedPropertyIds])
+  }, [circles, selectedPropertyIds, activeTab, currentMonth])
 
   const handleViewDetails = () => {
     // ส่งข้อมูล propertyList ไปที่ booking และตรวจสอบว่ามีข้อมูลหรือไม่
