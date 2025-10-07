@@ -1074,6 +1074,7 @@ export default function PropertyLayout() {
         amount: totalBookingAmount,
         booking_month: dayjs().month() + 1,
         booking_year: dayjs().year(),
+        project_id : projectId,
         daily_booking_units: pendingBookingList.map((item) => {
           return {
             unit_id: item.unit_number,
