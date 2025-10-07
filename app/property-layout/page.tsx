@@ -489,6 +489,13 @@ export default function PropertyLayout() {
       month: searchUnitMatrix.month,
       year: Number(value)
     })
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const onChangeSearchMonth = (value: string) => {
@@ -501,6 +508,13 @@ export default function PropertyLayout() {
     getUnitBookingDate({
       month: Number(value)
     })
+    clearAllDates()
+    if (externalCircleUpdateRef.current){
+      const resetProperties = circles.map((property) => {
+        return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
+      })
+      externalCircleUpdateRef.current(resetProperties)
+    }
   }
 
   const onChangeSelectBookType = (value: string) => {
@@ -641,6 +655,7 @@ export default function PropertyLayout() {
     setBookingData([])
     setSelectedPropertyIds(new Set())
     setShowDetailPanel(false)
+    setShowPropertyList(false)
   }
 
   const handleClearAllDates = () => {
@@ -856,7 +871,6 @@ export default function PropertyLayout() {
     // กรองวันที่จองแล้วออก
     dates = dates.filter(date => {
       const dateKey = dayjs(date).format('YYYY-MM-DD')
-      console.log(dateKey, 'dateskey')
       // const isSelectProperty = bookingData.findIndex((item) => item.name === property.name)
       // if (isSelectProperty === -1 && bookingData.length > 0) {
       //   return true
