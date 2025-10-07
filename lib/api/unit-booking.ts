@@ -30,6 +30,7 @@ export interface IPayloadBookUnit {
   booking_month: number;
   booking_year: number;
   amount: number;
+  project_id: string;
   daily_booking_units: {
     unit_id: string;
     book_date: string;

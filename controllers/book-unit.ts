@@ -6,6 +6,7 @@ interface IPayloadBookUnit {
   booking_type: string;
   booking_month: number;
   booking_year: number;
+  project_id: string;
   amount: number;
   daily_booking_units: {
     unit_id: string;
