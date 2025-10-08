@@ -32,6 +32,8 @@ export interface Zone {
   zone_id: string,
   zone_name: string,
   zone_path_image: string
+  x: number,
+  y: number
 }
 
 export async function getZonesByProjectApi (payload: {

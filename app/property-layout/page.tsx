@@ -51,6 +51,8 @@ interface ZoneDetail {
   id: string;
   name: string;
   imagePath: string;
+  x: number;
+  y: number;
 }
 
 interface CustomerDetail {
@@ -120,6 +122,10 @@ export default function PropertyLayout() {
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     counter: 0
+  })
+  const [focusCanvas, setFocusCanvas] = useState<{ x: number | null; y: number | null }>({
+    x: null,
+    y: null
   })
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
@@ -259,11 +265,13 @@ export default function PropertyLayout() {
           id: item.zone_id,
           name: item.zone_name,
           imagePath: item.zone_path_image,
+          x: item.x,
+          y: item.y
         }
       }))
 
       // set init zone
-      setSelectedZone(zoneData.data[0].zone_id)
+      // setSelectedZone(zoneData.data[0].zone_id)
       setCanvasBackgroundImage(zoneData.data[0].zone_path_image)
     }
     else{
@@ -490,6 +498,17 @@ export default function PropertyLayout() {
       })
       externalCircleUpdateRef.current(resetProperties)
     }
+  }
+
+  const onChangeSearchZone = (zone_id: string) => {
+    setSelectedZone(zone_id)
+    const zoneData = zoneList.find((item) => {
+      return item.id === zone_id
+    })
+    setFocusCanvas({
+      x: zoneData?.x || null,
+      y: zoneData?.y || null
+    })
   }
 
   const onChangeSelectBookType = (value: string) => {
@@ -1261,7 +1280,7 @@ export default function PropertyLayout() {
               {/* Zone Selection */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">โซน</label>
-                <Select value={selectedZone} onValueChange={setSelectedZone}>
+                <Select value={selectedZone} onValueChange={onChangeSearchZone}>
                   <SelectTrigger className="w-full hover:border-blue-300 transition-colors">
                     <SelectValue placeholder="เลือกโซน" />
                   </SelectTrigger>
@@ -1638,6 +1657,7 @@ export default function PropertyLayout() {
                   onChangeFilterDay={(day: number) => {
                     onChangeSerachDay(day)
                   }}
+                  focus={focusCanvas}
                 />
               </Spinner>
             </div>
