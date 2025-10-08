@@ -43,7 +43,8 @@ interface CanvasMapProps {
   onCirclesChange?: (circles: Circle[]) => void // ส่ง circles กลับไปยัง parent
   filterUnitMatrix?: SearchUnitMatrix
   onLoading?: (isLoading: boolean) => void
-  onChangeFilterDay?: (day: number) => void
+  onChangeFilterDay?: (day: number) => void,
+  focus: {x: number | null, y: number | null}
 }
 
 export default function CanvasMap({ 
@@ -56,7 +57,8 @@ export default function CanvasMap({
   onCirclesChange, 
   filterUnitMatrix,
   onLoading,
-  onChangeFilterDay
+  onChangeFilterDay,
+  focus
 }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
@@ -602,6 +604,18 @@ export default function CanvasMap({
       draw()
     }
   }, [draw, isImageLoaded])
+
+  const handleCanvasFocus = useCallback(() => {
+    if (focus.x && focus.y){
+      dragStartRef.current = { x: focus.x, y: focus.y }
+      // scaleRef.current = 1
+      draw()
+    }
+  }, [draw, focus])
+
+  useEffect(() => {
+    handleCanvasFocus()
+  }, [focus])
 
   // Handle image upload
   const handleImageUpload = useCallback(
