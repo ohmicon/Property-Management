@@ -606,10 +606,20 @@ export default function CanvasMap({
   }, [draw, isImageLoaded])
 
   const handleCanvasFocus = useCallback(() => {
-    if (focus.x && focus.y){
-      dragStartRef.current = { x: focus.x, y: focus.y }
-      // scaleRef.current = 1
+    console.log(offsetRef.current)
+    const canvas = canvasRef.current
+    if (focus.x && focus.y && canvas){
+      const W = canvas.width;
+      const H = canvas.height;
+      const targetX = focus.x;
+      const targetY = focus.y;
+      let offsetX = W / 2 - targetX * scaleRef.current;
+      let offsetY = H / 2 - targetY * scaleRef.current;
+      offsetRef.current = {x: offsetX, y: offsetY}
       draw()
+    }
+    else{
+      resetView()
     }
   }, [draw, focus])
 

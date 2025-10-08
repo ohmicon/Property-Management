@@ -271,7 +271,7 @@ export default function PropertyLayout() {
       }))
 
       // set init zone
-      setSelectedZone(zoneData.data[0].zone_id)
+      // setSelectedZone(zoneData.data[0].zone_id)
       setCanvasBackgroundImage(zoneData.data[0].zone_path_image)
     }
     else{
