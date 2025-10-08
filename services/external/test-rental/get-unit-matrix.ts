@@ -1,6 +1,6 @@
 import { getConnection } from "@/lib/db";
 import { IResponse } from "../models/master";
-import { UnitMatrix } from "../models/unit-matrix";
+import { FloorPlan, UnitMatrix } from "../models/unit-matrix";
 import sql from "mssql";
 
 export interface IPayloadGetUnitMatrixService {
@@ -44,6 +44,40 @@ export const getUnitMatrixService = async ({ project_id, year, month, day }: IPa
       error: err.message,
       data: [],
       message: err.message
+    }
+  }
+}
+
+export interface IPayloadGetFloorPlanService {
+  project_id: string
+}
+
+export const getFloorPlanService = async ({ project_id }: IPayloadGetFloorPlanService): Promise<IResponse<FloorPlan[]>> => {
+  try{
+    const pool = await getConnection();
+    const request = pool.request()
+    if (project_id) {
+      request.input("ProjectID", sql.NVarChar, project_id)
+    }
+    const { recordset: result } = await request.query(`
+      SELECT P1.ProjectID, P1.FloorPlanName, P1.X, P1.Y, P2.FloorPlanPath
+      FROM Sys_Daily_Floor_Plan P1
+      INNER JOIN Sys_Daily_Floor_Plan P2 ON P2.FloorPlanID = P1.ParentID
+      WHERE P1.ParentID <> 0 ${project_id ? 'AND P1.ProjectID = @ProjectID' : ''}
+    `)
+    return {
+      success: true,
+      data: result,
+      message: "Success"
+    }
+  }
+  catch (err: any) {
+    console.log(err);
+    return {
+      success: false,
+      error: 'failed',
+      data: [],
+      message: 'failed'
     }
   }
 }
