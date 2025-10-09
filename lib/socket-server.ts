@@ -545,7 +545,6 @@ const getSocketIO = async (): Promise<{ io: SocketIOServer; port: number }> => {
             
             // Broadcast to all other clients
             socket.broadcast.emit("circleUpdated", circle);
-            console.log(`📡 Broadcasted selectBooking update to all clients:`, circle);
           });
           
           // Handle request for current booking state

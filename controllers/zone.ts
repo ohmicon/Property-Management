@@ -11,6 +11,7 @@ export interface IResponseGetZonesByProjectController {
   x: number;
   y: number;
   zone_path_image: string;
+  file_id: string
 }
 
 export const getZonesByProjectController = async (payload: IPayloadGetZonesByProjectController): Promise<IResponse<IResponseGetZonesByProjectController[]>> => {
@@ -30,7 +31,8 @@ export const getZonesByProjectController = async (payload: IPayloadGetZonesByPro
         zone_name: item.FloorPlanName,
         x: item.X,
         y: item.Y,
-        zone_path_image: `${process.env.NEXT_PUBLIC_SERVER_HOST}/NumberOneNightMarketZoneA.jpg`, // ต้องมาแก้นะ
+        zone_path_image: `${process.env.NEXT_PUBLIC_SERVER_HOST}/api/image/plan/${item.FileID}`,
+        file_id: item.FileID
       } as IResponseGetZonesByProjectController
     }) || [];
     return {
