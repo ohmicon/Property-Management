@@ -1,3 +1,5 @@
+'use client'
+
 import PropertyLayout from "../app/property-layout/page"
 
 interface HomePageProps {
@@ -6,11 +8,11 @@ interface HomePageProps {
 }
 
 const types = ['market', 'hotel']
-export default async function HomePage({ searchParams }: HomePageProps) {
+export default function HomePage({ searchParams }: HomePageProps) {
 
   // ใส่ Default
-  const typeBusiness = ((await searchParams).type as string) || 'market';
-  const projectId = ((await searchParams).project as string) || 'M004'
+  const typeBusiness = 'market';
+  const projectId = 'M004'
   if (typeof typeBusiness === 'string' && types.includes(typeBusiness)) {
     return <PropertyLayout typeBusiness={typeBusiness} projectId={projectId}/>
   }
