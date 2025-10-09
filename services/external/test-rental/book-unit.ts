@@ -79,14 +79,13 @@ export const bookUnitsService = async (payload: IPayloadBookUnitsService): Promi
         ,[UnitID]
         ,[BookingDate]
         ,[Amount]
-        ,[CreatedAt]
-        ,[Status])
+        ,[CreatedAt])
       VALUES
         ${payload.daily_booking_units.map((unit, index) => {
           bookingUnitsRequest.input(`UnitID${index}`, sql.NVarChar, unit.unit_id);
           bookingUnitsRequest.input(`BookingDate${index}`, sql.NVarChar, unit.book_date);
           bookingUnitsRequest.input(`Amount${index}`, sql.Decimal(18,2), unit.amount);
-          return `(@BookingID, @UnitID${index}, @BookingDate${index}, @Amount${index}, GETDATE(), '')`
+          return `(@BookingID, @UnitID${index}, @BookingDate${index}, @Amount${index}, GETDATE())`
         }).join(",")}
     `
     bookingUnitsRequest.input("BookingID", sql.NVarChar, bookingId);

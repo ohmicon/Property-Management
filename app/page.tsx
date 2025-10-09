@@ -11,9 +11,12 @@ interface HomePageProps {
 const types = ['market', 'hotel']
 export default function HomePage() {
   const searchParams = useSearchParams();
-  const typeBusiness = searchParams.get('type');
+
+  // ใส่ Default
+  const typeBusiness = searchParams.get('type') || 'market';
+  const projectId = searchParams.get('') || 'M004'
   if (typeof typeBusiness === 'string' && types.includes(typeBusiness)) {
-    return <PropertyLayout typeBusiness={typeBusiness}/>
+    return <PropertyLayout typeBusiness={typeBusiness} projectId={projectId}/>
   }
   return <></>
 }

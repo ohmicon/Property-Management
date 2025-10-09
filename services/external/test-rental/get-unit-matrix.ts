@@ -24,10 +24,10 @@ export const getUnitMatrixService = async ({ project_id, year, month, day }: IPa
 
     const newResult = result.recordset.map(item => {
       if (!item.M_Price || item.M_Price === 0) {
-        item.M_Price = 200;
+        item.M_Price = 0;
       }
       if (!item.D_Price || item.D_Price === 0) {
-        item.D_Price = 250;
+        item.D_Price = 0;
       }
       return item;
     })
@@ -60,9 +60,12 @@ export const getFloorPlanService = async ({ project_id }: IPayloadGetFloorPlanSe
       request.input("ProjectID", sql.NVarChar, project_id)
     }
     const { recordset: result } = await request.query(`
-      SELECT P1.ProjectID, P1.FloorPlanName, P1.X, P1.Y, P2.FloorPlanPath
+      SELECT P1.ProjectID, P1.FloorPlanName, P1.X, P1.Y, P2.FloorPlanPath, F.Id FileID
       FROM Sys_Daily_Floor_Plan P1
       INNER JOIN Sys_Daily_Floor_Plan P2 ON P2.FloorPlanID = P1.ParentID
+      LEFT JOIN Sys_REM_FileData F ON Convert(nvarchar(10), P2.FloorPlanID) = F.RefID
+        AND ISNULL(F.Isdelete,0) = 0
+        AND F.Process = 'floorplan'
       WHERE P1.ParentID <> 0 ${project_id ? 'AND P1.ProjectID = @ProjectID' : ''}
     `)
     return {
