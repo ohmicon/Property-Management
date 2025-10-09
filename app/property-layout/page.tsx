@@ -80,10 +80,10 @@ const mockCustomer = {
 }
 
 export interface PropertyLayoutProps {
-  type: string
+  typeBusiness: string
 }
 
-export default function PropertyLayout({ type }: PropertyLayoutProps) {
+export default function PropertyLayout({ typeBusiness }: PropertyLayoutProps) {
   // test project
   const setCustomer = useCustomerStore((state) => state.setCustomer)
 
