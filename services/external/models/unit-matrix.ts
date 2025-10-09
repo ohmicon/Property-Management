@@ -14,4 +14,5 @@ export interface FloorPlan {
   X: number;
   Y: number;
   FloorPlanPath: string;
+  FileID: string;
 }

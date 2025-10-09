@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw } from "lucide-react"
+import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw, SearchIcon } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -79,11 +79,15 @@ const mockCustomer = {
   type: 'ลูกค้า VIP',
 }
 
-export default function PropertyLayout() {
+export interface PropertyLayoutProps {
+  typeBusiness: string;
+  projectId: string
+}
+
+export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayoutProps) {
   // test project
   const setCustomer = useCustomerStore((state) => state.setCustomer)
 
-  const projectId = 'M004'
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
   const customerData = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
   const [activeTab, setActiveTab] = useState("monthly")
@@ -270,14 +274,17 @@ export default function PropertyLayout() {
         }
       }))
 
-      // set init zone
-      // setSelectedZone(zoneData.data[0].zone_id)
-      setCanvasBackgroundImage(zoneData.data[0].zone_path_image)
+      // set init 
+      const lengthZone = zoneData.data.length
+      // setSelectedZone(zoneData.data[lengthZone].zone_id)
+      setCanvasBackgroundImage(zoneData.data[lengthZone-1].zone_path_image)
     }
     else{
       setZoneList([])
     }
   }
+
+  console.log(canvasBackgroundImage)
 
   const getUnitBookingDate = async (filter: { day?: number; month?: number; year?: number }) => {
     const unitBookingDateData = await getUnitBookingDateApi({ 
@@ -2123,7 +2130,7 @@ export default function PropertyLayout() {
                                 className="bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-md shadow-sm transition-colors whitespace-nowrap"
                                 onClick={() => setShowCustomerDialog(true)}
                               >
-                                + สร้างลูกค้าใหม่
+                                <SearchIcon /> ค้นหาชื่อลูกค้า
                               </Button>
                             </div>
                           </div>

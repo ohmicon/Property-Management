@@ -519,7 +519,7 @@ export default function CanvasMap({
       img.src = "./Image-not-found.png";
     }
     //img.src = "https://picsum.photos/id/1015/1200/800"
-  }, [])
+  }, [backgroundImageUrl])
 
   // Draw function
   const draw = useCallback(() => {
