@@ -21,6 +21,7 @@ import { getZonesByProjectApi } from "@/lib/api/unit-matrix"
 import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit } from "@/lib/api/unit-booking"
 import { useCustomerStore } from "../customer-store"; // เพิ่มบรรทัดนี้
 import { axiosPublic } from "@/lib/axios"
+import CustomerBookingCard from "@/components/customer-booking-card"
 interface Property {
   id: string
   name: string;
@@ -87,7 +88,7 @@ export interface PropertyLayoutProps {
 export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayoutProps) {
   // test project
   const setCustomer = useCustomerStore((state) => state.setCustomer)
-
+  const [currentBusinessType, setCurrentBusinessType] = useState(typeBusiness)
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
   const customerData = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
   const [activeTab, setActiveTab] = useState("monthly")
@@ -1208,7 +1209,8 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
     >
       <div className="flex flex-col lg:flex-row h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Left Sidebar */}
-      <div className="w-full lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-gray-200 shadow-lg lg:shadow-lg">
+      {currentBusinessType === "market" ? (
+        <div className="w-full lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-gray-200 shadow-lg lg:shadow-lg">
         <div className="p-4 lg:p-6 space-y-6">
           {/* Header */}
           <div className="text-center">
@@ -1362,6 +1364,10 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
           </Card>
         </div>
       </div>
+      ) : (
+        <CustomerBookingCard />
+      )}
+
 
       {/* Confirm Book Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={(open) => {
