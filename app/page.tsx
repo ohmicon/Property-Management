@@ -1,7 +1,4 @@
-'use client'
-
 import PropertyLayout from "../app/property-layout/page"
-import { useSearchParams } from 'next/navigation';
 
 interface HomePageProps {
   params: { id: string }; // Type the `id` parameter as a string
@@ -9,12 +6,11 @@ interface HomePageProps {
 }
 
 const types = ['market', 'hotel']
-export default function HomePage() {
-  const searchParams = useSearchParams();
+export default async function HomePage({ searchParams }: HomePageProps) {
 
   // ใส่ Default
-  const typeBusiness = searchParams.get('type') || 'market';
-  const projectId = searchParams.get('') || 'M004'
+  const typeBusiness = ((await searchParams).type as string) || 'market';
+  const projectId = ((await searchParams).project as string) || 'M004'
   if (typeof typeBusiness === 'string' && types.includes(typeBusiness)) {
     return <PropertyLayout typeBusiness={typeBusiness} projectId={projectId}/>
   }
