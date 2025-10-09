@@ -79,7 +79,11 @@ const mockCustomer = {
   type: 'ลูกค้า VIP',
 }
 
-export default function PropertyLayout() {
+export interface PropertyLayoutProps {
+  type: string
+}
+
+export default function PropertyLayout({ type }: PropertyLayoutProps) {
   // test project
   const setCustomer = useCustomerStore((state) => state.setCustomer)
 
