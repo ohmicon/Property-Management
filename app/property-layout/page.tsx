@@ -132,6 +132,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
     x: null,
     y: null
   })
+  const [selectedRoomType, setSelectedRoomType] = useState<"Suite" | "Standard" | "Deluxe" | null>(null)
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
   // State for tracking remaining booking time
@@ -1365,7 +1366,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
         </div>
       </div>
       ) : (
-        <CustomerBookingCard />
+        <CustomerBookingCard onRoomTypeChange={(roomType: string | null) => setSelectedRoomType(roomType as "Suite" | "Standard" | "Deluxe" | null)} />
       )}
 
 
@@ -1671,6 +1672,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                     onChangeSerachDay(day)
                   }}
                   focus={focusCanvas}
+                  selectedRoomType={selectedRoomType}
                 />
               </Spinner>
             </div>

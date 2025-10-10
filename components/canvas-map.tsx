@@ -20,6 +20,7 @@ export interface Circle {
   initStatus: "available" | "booked" | "pending" | "some available", // สถานะเริ่มต้นจาก API
   id: string
   name: string;
+  room_type?: string // เพิ่ม
   bookedBy?: string // Username ของคนที่จอง (สำหรับ pending)
   bookedAt?: number // Timestamp ของการจอง
   m_price: number // ราคาเช่ารายเดือน
@@ -45,6 +46,7 @@ interface CanvasMapProps {
   onLoading?: (isLoading: boolean) => void
   onChangeFilterDay?: (day: number) => void,
   focus: {x: number | null, y: number | null}
+  selectedRoomType?: "Suite" | "Standard" | "Deluxe" | null; // "Suite" | "Standard" | "Deluxe" | null
 }
 
 export default function CanvasMap({ 
@@ -58,7 +60,8 @@ export default function CanvasMap({
   filterUnitMatrix,
   onLoading,
   onChangeFilterDay,
-  focus
+  focus,
+  selectedRoomType,
 }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
@@ -90,7 +93,8 @@ export default function CanvasMap({
   const [circles, setCircles] = useState<Circle[]>([])
   const [isLoadingCircles, setIsLoadingCircles] = useState(true)
   const [hasReceivedSocketData, setHasReceivedSocketData] = useState(false)
-  
+  const [flashPhase, setFlashPhase] = useState(0)
+
   // User info
   const [currentUsername, setCurrentUsername] = useState<string>('')
 // ใช้ zustand อ่านข้อมูลลูกค้า
@@ -99,7 +103,34 @@ export default function CanvasMap({
   const getCircleStyle = (circle: Circle) => {
     // Check if this circle is selected in Property List
     const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
-    
+    const isMatchingRoomType = selectedRoomType ? circle.room_type === selectedRoomType : false
+    const hasRoomTypeFilter = selectedRoomType !== null && selectedRoomType !== undefined
+
+    // ถ้าไม่ตรงกับ room type ที่เลือก → ทำให้จาง/เทา
+  if (hasRoomTypeFilter && !isMatchingRoomType) {
+      return {
+        fillColor: "rgba(150, 150, 150, 0.3)", // สีเทาจาง
+        strokeColor: "rgba(100, 100, 100, 0.5)",
+        strokeWidth: 1,
+        cursor: "not-allowed",
+        isDimmed: true,
+        textColor: "rgba(255, 255, 255, 0.5)",
+      }
+    }
+
+    // ถ้าตรงกับ room type และ available → Highlight!
+    if (hasRoomTypeFilter && isMatchingRoomType && circle.status === "available") {
+      return {
+        fillColor: "rgba(59, 130, 246, 0.9)", // น้ำเงินสดใส
+        strokeColor: "rgba(37, 99, 235, 1)",
+        strokeWidth: 4,
+        cursor: "pointer",
+        isHighlighted: true,
+        textColor: "white",
+        shouldFlash: true, // เพิ่ม flashing effect
+      }
+    }
+
     if (circle.status === 'available' && circle.initStatus === 'available') {
       if (isSelectedInList) {
         // Selected in Property List - blue highlight
@@ -180,6 +211,11 @@ export default function CanvasMap({
         const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
         let circlesData = unitMatrixData.data?.map((item) => {
+          // Assign room types to circles for demo purposes
+          // In a real application, this would come from the API
+          const roomTypes: ("Suite" | "Standard" | "Deluxe")[] = ["Suite", "Standard", "Deluxe"];
+          const randomRoomType = roomTypes[Math.floor(Math.random() * roomTypes.length)];
+          
           return {
             id: item.unit_id,
             r: 23,
@@ -188,6 +224,7 @@ export default function CanvasMap({
             x: item.x,
             y: item.y,
             name: item.unit_number,
+            room_type: randomRoomType, // Assign random room type for demo
             m_price: item.m_price,
             d_price: item.d_price
           } as Circle
@@ -550,10 +587,30 @@ export default function CanvasMap({
       // Fill circle
       ctx.fillStyle = style.fillColor
       ctx.fill()
+
+       // เพิ่ม glow effect สำหรับห้องที่ highlight
+      // Glow effect สำหรับห้องที่ highlight
+      if (style.isHighlighted && style.shouldFlash) {
+        const flashIntensity = Math.sin(flashPhase) * 0.5 + 0.5
+        ctx.shadowColor = "rgba(59, 130, 246, 0.8)"
+        ctx.shadowBlur = (15 + flashIntensity * 10) / scaleRef.current
+
+        // วงกลมพัลส์
+        ctx.strokeStyle = "rgba(59, 130, 246, " + (0.6 + flashIntensity * 0.4) + ")"
+        ctx.lineWidth = (6 + flashIntensity * 4) / scaleRef.current
+        ctx.beginPath()
+        ctx.arc(circle.x, circle.y, circle.r + 8, 0, Math.PI * 2)
+        ctx.stroke()
+      } else {
+        ctx.shadowBlur = 0
+      }
       
       // Draw border
-      ctx.strokeStyle = style.strokeColor
-      ctx.lineWidth = style.strokeWidth / scaleRef.current
+      ctx.fillStyle = style.textColor || "white"
+      ctx.font = `bold ${14 / scaleRef.current}px Arial`
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+      ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
       
       // Draw dashed border for others' bookings
       if (style.isDashed) {
@@ -564,12 +621,26 @@ export default function CanvasMap({
       
       ctx.stroke()
       ctx.setLineDash([]) // Reset line dash
+      ctx.shadowBlur = 0; // Reset shadow
+
+      // Draw room number
+      ctx.fillStyle = style.textColor || "white"
+      ctx.font = `bold ${14 / scaleRef.current}px Arial`
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+      ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
 
       // Draw circle ID
-      ctx.fillStyle = "white"
+      ctx.fillStyle = style.isDimmed ? "rgba(255, 255, 255, 0.5)" : "white";      
       ctx.font = `${12 / scaleRef.current}px Arial`
       ctx.textAlign = "center"
       ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
+
+      if (style.isHighlighted && circle.room_type) {
+      ctx.fillStyle = "#1e40af";
+      ctx.font = `bold ${10 / scaleRef.current}px Arial`;
+      ctx.fillText(circle.room_type, circle.x, circle.y + 8 / scaleRef.current);
+    }
       
       // Draw username for pending bookings with different colors
       if (circle.status === "pending" && circle.bookedBy) {
@@ -588,7 +659,30 @@ export default function CanvasMap({
     })
 
     ctx.restore()
-  }, [backgroundImage, circles, currentUsername])
+  }, [backgroundImage, circles, currentUsername, ,flashPhase, selectedRoomType])
+
+   useEffect(() => {
+    let animationId: number
+
+    const animate = () => {
+      setFlashPhase((prev) => prev + 0.1)
+      draw()
+      animationId = requestAnimationFrame(animate)
+    }
+
+    if (selectedRoomType) {
+      animationId = requestAnimationFrame(animate)
+    } else {
+      draw()
+    }
+
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId)
+      }
+    }
+  }, [selectedRoomType, draw])
+
 
   // Initialize canvas
   useEffect(() => {

@@ -1,20 +1,48 @@
 // Room types configuration (referenced in the component)
 export const ROOM_TYPES = {
   standard: {
-    name: "ห้องสแตนดาร์ด",
+    name: "Standard",
     color: "#3b82f6" // blue-500
   },
   deluxe: {
-    name: "ห้องดีลักซ์",
+    name: "Deluxe",
     color: "#10b981" // green-500
   },
   suite: {
-    name: "ห้องสวีท",
+    name: "Suite",
     color: "#f59e0b" // amber-500
   },
   family: {
     name: "ห้องครอบครัว",
     color: "#8b5cf6" // violet-500
+  }
+};
+
+// Hotel room types for selection
+export const HOTEL_ROOM_TYPES = {
+  "Suite": {
+    id: "suite",
+    name: "Suite",
+    color: "#f59e0b", // amber-500
+    description: "ห้องสวีทพร้อมห้องนั่งเล่น"
+  },
+  "Standard": {
+    id: "standard",
+    name: "Standard",
+    color: "#3b82f6", // blue-500
+    description: "ห้องสแตนดาร์ดขนาดพอเหมาะ"
+  },
+  "Deluxe": {
+    id: "deluxe",
+    name: "Deluxe",
+    color: "#10b981", // green-500
+    description: "ห้องดีลักซ์ขนาดใหญ่"
+  },
+  "null": {
+    id: null,
+    name: "ทั้งหมด",
+    color: "#6b7280", // gray-500
+    description: "แสดงทุกประเภทห้อง"
   }
 };
 

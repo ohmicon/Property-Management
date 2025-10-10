@@ -3,23 +3,68 @@
 import { ScrollArea } from "./ui/scroll-area"
 import { Card } from "./ui/card"
 import { Badge } from "./ui/badge"
-import { User, Phone, Bed, Calendar, Clock } from "lucide-react"
+import { Button } from "./ui/button"
+import { User, Phone, Bed, Calendar, Clock, Filter } from "lucide-react"
 import { format } from "date-fns"
 import { th } from "date-fns/locale"
-import { pendingBookings, checkedInBookings, ROOM_TYPES, PendingBooking } from "@/data/booking-mock-data"
+import { pendingBookings, checkedInBookings, ROOM_TYPES, HOTEL_ROOM_TYPES, PendingBooking } from "@/data/booking-mock-data"
 import { useState } from "react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 
 export default function CustomerBookingCard({
+    onRoomTypeChange,
+}: {
+    onRoomTypeChange?: (roomType: string | null) => void;
 }) {
     const [selectedBooking, setSelectedBooking] = useState<PendingBooking | null>(null);
+    const [selectedRoomType, setSelectedRoomType] = useState<"Suite" | "Standard" | "Deluxe" | null>(null);
     
     const selectBooking = (booking: PendingBooking) => {
         setSelectedBooking(booking);
+    };
+
+    const handleRoomTypeChange = (roomType: "Suite" | "Standard" | "Deluxe" | "null") => {
+        const roomTypeValue = roomType === "null" ? null : roomType;
+        setSelectedRoomType(roomTypeValue);
+        if (onRoomTypeChange) {
+            onRoomTypeChange(roomTypeValue);
+        }
     };
     return (
         <div className="w-full lg:w-96 h-64 lg:h-full bg-background border-b lg:border-b-0 lg:border-r flex flex-col">
       <div className="p-3 md:p-4 border-b">
         <h2 className="text-lg md:text-xl font-bold">รายการจอง</h2>
+      </div>
+
+      {/* Room Type Filter */}
+      <div className="p-3 md:p-4 border-b bg-gray-50">
+        <div className="flex items-center gap-2 mb-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">ประเภทห้อง:</span>
+        </div>
+        <Select value={selectedRoomType || "null"} onValueChange={handleRoomTypeChange}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="เลือกประเภทห้อง" />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(HOTEL_ROOM_TYPES).map(([key, roomType]) => (
+              <SelectItem key={key} value={key}>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: roomType.color }}
+                  />
+                  <span>{roomType.name}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedRoomType && HOTEL_ROOM_TYPES[selectedRoomType as keyof typeof HOTEL_ROOM_TYPES] && (
+          <p className="text-xs text-muted-foreground mt-2">
+            {HOTEL_ROOM_TYPES[selectedRoomType as keyof typeof HOTEL_ROOM_TYPES].description}
+          </p>
+        )}
       </div>
 
       <ScrollArea className="flex-1">
