@@ -857,13 +857,44 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
 
     // Add this function inside the PropertyLayout component
   const handleRemoveConfirmedProperty = (cartId: string) => {
+    // Find the property being removed to update its status
+    const propertyToRemove = confirmedProperties.find(property => property.cartId === cartId)
+    
     setConfirmedProperties(prev => prev.filter(property => property.cartId !== cartId))
     setPendingBookingList(prev => prev.filter(booking => booking.cartId !== cartId))
+
+    // Update the circle status back to 'available' when removing from confirmation
+    if (propertyToRemove && externalCircleUpdateRef.current) {
+      const circleToReset: Circle = {
+        id: propertyToRemove.id,
+        name: propertyToRemove.name,
+        x: 100, // Default position, will be updated by existing circle data
+        y: 100,
+        r: 20,
+        status: 'available' as const,
+        initStatus: 'available' as const,
+        bookedBy: undefined,
+        bookedAt: undefined,
+        m_price: propertyToRemove.m_price,
+        d_price: propertyToRemove.d_price,
+      }
+      
+      // Find the actual circle data to preserve position
+      const existingCircle = circles.find(c => c.id === propertyToRemove.id)
+      if (existingCircle) {
+        circleToReset.x = existingCircle.x
+        circleToReset.y = existingCircle.y
+        circleToReset.r = existingCircle.r
+        circleToReset.initStatus = existingCircle.initStatus
+      }
+      
+      externalCircleUpdateRef.current([circleToReset])
+    }
 
     // Show notification
     toast({
       title: "ยกเลิกรายการ",
-      description: `ยกเลิกการจองหมายเลข ${cartId} แล้ว`,
+      description: `ยกเลิกการจองแปลงที่ ${propertyToRemove?.name || cartId} แล้ว`,
     })
 
     // If no more confirmed properties, close confirmation dialog
@@ -1083,7 +1114,15 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
     setSelectedPropertyIds(new Set())
     setSelectedDates([])
     if (externalCircleUpdateRef.current){
+      // อัปเดตเฉพาะวงกลมที่ไม่ได้ถูกเลือกให้เป็น 'available'
+      // วงกลมที่ถูกเลือกจะยังคงสถานะ 'pending' จนกว่าจะจบ flow การจอง
       const resetProperties = circles.map((property) => {
+        // ถ้าเป็นวงกลมที่ถูกเลือกไว้ (อยู่ใน bookingData) ให้คงสถานะไว้
+        const isSelected = bookingData.some(booking => booking.id === property.id)
+        if (isSelected) {
+          return property // คงสถานะเดิม (pending)
+        }
+        // ถ้าไม่ได้ถูกเลือก ให้รีเซ็ตเป็น available
         return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
       })
       externalCircleUpdateRef.current(resetProperties)
@@ -1143,23 +1182,23 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
       // สร้าง array สำหรับเก็บจุดที่อัพเดทสำเร็จ
       const updatedCircles: Circle[] = []
     
-      // // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
-      // for (const property of bookingData) {
-      //   try {
-      //     // เรียก API เพื่ออัพเดทสถานะเป็น booked
-      //     const updatedCircle = await updateCircleStatus(property.id, 'booked')
-        
-      //     // เก็บจุดที่อัพเดทสำเร็จ
-      //     updatedCircles.push(updatedCircle)
-        
-      //     // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
-      //     if (externalCircleUpdateRef.current) {
-      //       externalCircleUpdateRef.current([updatedCircle])
-      //     }
-      //   } catch (error) {
-      //     console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
-      //   }
-      // }
+      // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
+      for (const property of confirmedProperties) {
+        try {
+          // เรียก API เพื่ออัพเดทสถานะเป็น booked
+          const updatedCircle = await updateCircleStatus(property.id, 'booked')
+          
+          // เก็บจุดที่อัพเดทสำเร็จ
+          updatedCircles.push(updatedCircle)
+          
+          // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
+          if (externalCircleUpdateRef.current) {
+            externalCircleUpdateRef.current([updatedCircle])
+          }
+        } catch (error) {
+          console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
+        }
+      }
       
       // แสดง toast สำเร็จ ถ้ามีการอัพเดทอย่างน้อย 1 จุด
       if (result.data) {
