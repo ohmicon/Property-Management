@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw, SearchIcon } from "lucide-react"
+import { Search, Calendar, MapPin, Info, Menu, X, Upload, Send, RefreshCw, SearchIcon, CheckCircle } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -22,6 +22,8 @@ import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit }
 import { useCustomerStore } from "../customer-store"; // เพิ่มบรรทัดนี้
 import { axiosPublic } from "@/lib/axios"
 import CustomerBookingCard from "@/components/customer-booking-card"
+import MarketLegend from "@/components/market-legend"
+import HotelLegend from "@/components/hotel-legend"
 interface Property {
   id: string
   name: string;
@@ -132,6 +134,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
     x: null,
     y: null
   })
+  const [selectedRoomType, setSelectedRoomType] = useState<"Suite" | "Standard" | "Deluxe" | null>(null)
   const [isLoadingUnitMatrix, setIsLoadingUnitMatrix] = useState(false)
   
   // State for tracking remaining booking time
@@ -854,13 +857,44 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
 
     // Add this function inside the PropertyLayout component
   const handleRemoveConfirmedProperty = (cartId: string) => {
+    // Find the property being removed to update its status
+    const propertyToRemove = confirmedProperties.find(property => property.cartId === cartId)
+    
     setConfirmedProperties(prev => prev.filter(property => property.cartId !== cartId))
     setPendingBookingList(prev => prev.filter(booking => booking.cartId !== cartId))
+
+    // Update the circle status back to 'available' when removing from confirmation
+    if (propertyToRemove && externalCircleUpdateRef.current) {
+      const circleToReset: Circle = {
+        id: propertyToRemove.id,
+        name: propertyToRemove.name,
+        x: 100, // Default position, will be updated by existing circle data
+        y: 100,
+        r: 20,
+        status: 'available' as const,
+        initStatus: 'available' as const,
+        bookedBy: undefined,
+        bookedAt: undefined,
+        m_price: propertyToRemove.m_price,
+        d_price: propertyToRemove.d_price,
+      }
+      
+      // Find the actual circle data to preserve position
+      const existingCircle = circles.find(c => c.id === propertyToRemove.id)
+      if (existingCircle) {
+        circleToReset.x = existingCircle.x
+        circleToReset.y = existingCircle.y
+        circleToReset.r = existingCircle.r
+        circleToReset.initStatus = existingCircle.initStatus
+      }
+      
+      externalCircleUpdateRef.current([circleToReset])
+    }
 
     // Show notification
     toast({
       title: "ยกเลิกรายการ",
-      description: `ยกเลิกการจองหมายเลข ${cartId} แล้ว`,
+      description: `ยกเลิกการจองแปลงที่ ${propertyToRemove?.name || cartId} แล้ว`,
     })
 
     // If no more confirmed properties, close confirmation dialog
@@ -901,6 +935,14 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
       m_price: property.m_price,
       d_price: property.d_price,
     })
+    
+    // For hotel business type, show room dialog instead of property list
+    if (currentBusinessType === "hotel") {
+      setSelectedProperty(property)
+      setShowHotelRoomDialog(true)
+      return
+    }
+    
     if (selectedPropertyIds.has(property.id)) {
       // ถ้าถูกเลือกแล้ว ให้ยกเลิกการเลือก
       handleRemoveProperty(property.id)
@@ -928,10 +970,22 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
     // setShowDetailPanel(false)
   }
 
+  // Handle hotel room confirmation
+  const handleConfirmHotelRoom = () => {
+    if (selectedProperty) {
+      // Add ID to selectedPropertyIds
+      setSelectedPropertyIds(prev => new Set([...prev, selectedProperty.id]))
+      
+      // Close hotel room dialog
+      setShowHotelRoomDialog(false)
+    }
+  }
+
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmedProperties, setConfirmedProperties] = useState<CartProperty[]>([])
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [showClearConfirmDialog, setShowClearConfirmDialog] = useState(false)
+  const [showHotelRoomDialog, setShowHotelRoomDialog] = useState(false)
   
   // Sync propertyList กับ circles ที่มีสถานะ pending และถูกเลือกโดย user
   useEffect(() => {
@@ -1060,7 +1114,15 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
     setSelectedPropertyIds(new Set())
     setSelectedDates([])
     if (externalCircleUpdateRef.current){
+      // อัปเดตเฉพาะวงกลมที่ไม่ได้ถูกเลือกให้เป็น 'available'
+      // วงกลมที่ถูกเลือกจะยังคงสถานะ 'pending' จนกว่าจะจบ flow การจอง
       const resetProperties = circles.map((property) => {
+        // ถ้าเป็นวงกลมที่ถูกเลือกไว้ (อยู่ใน bookingData) ให้คงสถานะไว้
+        const isSelected = bookingData.some(booking => booking.id === property.id)
+        if (isSelected) {
+          return property // คงสถานะเดิม (pending)
+        }
+        // ถ้าไม่ได้ถูกเลือก ให้รีเซ็ตเป็น available
         return {...property, status: 'available' as const, bookedBy: undefined, bookedAt: undefined}
       })
       externalCircleUpdateRef.current(resetProperties)
@@ -1120,23 +1182,23 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
       // สร้าง array สำหรับเก็บจุดที่อัพเดทสำเร็จ
       const updatedCircles: Circle[] = []
     
-      // // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
-      // for (const property of bookingData) {
-      //   try {
-      //     // เรียก API เพื่ออัพเดทสถานะเป็น booked
-      //     const updatedCircle = await updateCircleStatus(property.id, 'booked')
-        
-      //     // เก็บจุดที่อัพเดทสำเร็จ
-      //     updatedCircles.push(updatedCircle)
-        
-      //     // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
-      //     if (externalCircleUpdateRef.current) {
-      //       externalCircleUpdateRef.current([updatedCircle])
-      //     }
-      //   } catch (error) {
-      //     console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
-      //   }
-      // }
+      // วนลูปทุกแปลงที่จะจอง และเรียก API เพื่อเปลี่ยนสถานะเป็น booked
+      for (const property of confirmedProperties) {
+        try {
+          // เรียก API เพื่ออัพเดทสถานะเป็น booked
+          const updatedCircle = await updateCircleStatus(property.id, 'booked')
+          
+          // เก็บจุดที่อัพเดทสำเร็จ
+          updatedCircles.push(updatedCircle)
+          
+          // ส่งข้อมูลไปยังผู้ใช้อื่นๆ ผ่าน socket เพื่อให้เห็นการเปลี่ยนแปลงทันที
+          if (externalCircleUpdateRef.current) {
+            externalCircleUpdateRef.current([updatedCircle])
+          }
+        } catch (error) {
+          console.error(`ไม่สามารถอัพเดทแปลง ${property.name} ได้:`, error)
+        }
+      }
       
       // แสดง toast สำเร็จ ถ้ามีการอัพเดทอย่างน้อย 1 จุด
       if (result.data) {
@@ -1365,7 +1427,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
         </div>
       </div>
       ) : (
-        <CustomerBookingCard />
+        <CustomerBookingCard onRoomTypeChange={(roomType: string | null) => setSelectedRoomType(roomType as "Suite" | "Standard" | "Deluxe" | null)} />
       )}
 
 
@@ -1671,67 +1733,19 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                     onChangeSerachDay(day)
                   }}
                   focus={focusCanvas}
+                  selectedRoomType={selectedRoomType}
+                  businessType={currentBusinessType as "hotel" | "market"}
                 />
               </Spinner>
             </div>
           </div>
 
           {/* Floating Legend Panel */}
-          <div
-            className={`absolute bottom-4 right-4 transition-all duration-300 ${showLegend ? "translate-x-0" : "translate-x-full"}`}
-          >
-            <Card className="w-80 shadow-lg border-gray-200 bg-white/95 backdrop-blur-sm">
-              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle className="text-base text-gray-800">สถานะหน่วย</CardTitle>
-                  <p className="text-sm text-gray-500">Legend & Status Information</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowLegend(!showLegend)}
-                  className="h-8 w-8 p-0 hover:bg-gray-100"
-                >
-                  {showLegend ? "×" : "◐"}
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200 hover:bg-green-100 transition-colors">
-                    <div className="w-5 h-5 bg-green-400 rounded-full border-2 border-green-500 shadow-sm"></div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">ว่างทุกวัน</span>
-                      <p className="text-xs text-gray-500">Available</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 transition-colors">
-                    <div className="w-5 h-5 bg-red-400 rounded-full border-2 border-red-500 shadow-sm"></div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">ขายแล้ว</span>
-                      <p className="text-xs text-gray-500">Booked</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-100 border border-orange-400 hover:bg-orange-200 transition-colors">
-                    <div className="w-5 h-5 bg-orange-500 rounded-full border-2 border-orange-500 shadow-sm"></div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">กำลังจอง</span>
-                      <p className="text-xs text-gray-500">Pending</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 transition-colors">
-                    <div className="w-5 h-5 bg-yellow-400 rounded-full border-2 border-yellow-500 shadow-sm"></div>
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">จองได้บางวัน</span>
-                      <p className="text-xs text-gray-500">Some available</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          {currentBusinessType === "market" ? (
+            <MarketLegend showLegend={showLegend} setShowLegend={setShowLegend} />
+          ) : (
+            <HotelLegend showLegend={showLegend} setShowLegend={setShowLegend} />
+          )}
 
           {/* Toggle Button when Legend is hidden */}
           {!showLegend && (
@@ -1827,9 +1841,13 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
           <div
             className={`absolute top-4 right-4 bottom-4 transition-all duration-300 ${showDetailPanel ? "translate-x-0" : "translate-x-full"}`}
           >
-            <Card className="w-80 h-full shadow-lg border-gray-200 bg-teal-100 backdrop-blur-sm flex flex-col rounded-3xl overflow-hidden">
+            <Card className={`w-80 h-full shadow-lg border-gray-200 backdrop-blur-sm flex flex-col rounded-3xl overflow-hidden ${
+              currentBusinessType === "hotel" ? "bg-blue-100" : "bg-teal-100"
+            }`}>
               {/* Header */}
-              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0 flex-shrink-0 bg-teal-200 border-b border-teal-300">
+              <CardHeader className={`pb-3 flex flex-row items-center justify-between space-y-0 flex-shrink-0 border-b ${
+                currentBusinessType === "hotel" ? "bg-blue-200 border-blue-300" : "bg-teal-200 border-teal-300"
+              }`}>
                 <div>
                   <CardTitle className="text-base text-gray-800">การจอง ({bookingData.length} แปลง)</CardTitle>
                 </div>
@@ -1837,7 +1855,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                   variant="ghost"
                   size="sm"
                   onClick={handleCloseDetailPanel}
-                  className="h-8 w-8 p-0 hover:bg-teal-300 rounded-full"
+                  className={`h-8 w-8 p-0 rounded-full ${
+                    currentBusinessType === "hotel" ? "hover:bg-blue-300" : "hover:bg-teal-300"
+                  }`}
                 >
                   <X className="w-4 h-4" />
                 </Button>
@@ -1848,7 +1868,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                   <div className="space-y-4">
                     {/* Selected Properties Summary */}
                     {bookingData.length > 0 && (
-                      <div className="bg-white rounded-lg p-3 border border-teal-300">
+                      <div className={`bg-white rounded-lg p-3 border ${
+                        currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                      }`}>
                         <h4 className="text-sm font-medium text-gray-800 mb-2">แปลงที่เลือก</h4>
                         <div className="space-y-1">
                           {bookingData.map((property) => (
@@ -1873,11 +1895,15 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                     </div> */}
 
                     {/* Calendar Navigation */}
-                    <div className="flex items-center justify-between bg-white rounded-lg p-2 border border-teal-300">
+                    <div className={`flex items-center justify-between bg-white rounded-lg p-2 border ${
+                      currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                    }`}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 hover:bg-teal-100"
+                        className={`h-8 w-8 p-0 ${
+                          currentBusinessType === "hotel" ? "hover:bg-blue-100" : "hover:bg-teal-100"
+                        }`}
                         onClick={handlePrevMonth}
                       >
                         <span className="text-blue-500">{"<"}</span>
@@ -1888,7 +1914,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 hover:bg-teal-100"
+                        className={`h-8 w-8 p-0 ${
+                          currentBusinessType === "hotel" ? "hover:bg-blue-100" : "hover:bg-teal-100"
+                        }`}
                         onClick={handleNextMonth}
                       >
                         <span className="text-blue-500">{">"}</span>
@@ -1968,7 +1996,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                     </div> */}
 
                     {/* Calendar Grid */}
-                    <div className="bg-white rounded-lg p-3 border border-teal-300">
+                    <div className={`bg-white rounded-lg p-3 border ${
+                      currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                    }`}>
                       {/* Calendar Header */}
                       <div className="grid grid-cols-7 gap-1 mb-2">
                         {["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"].map((day) => (
@@ -2041,13 +2071,23 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                     </div>
 
                     {/* Selection Summary */}
-                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div className={`rounded-lg p-3 border ${
+                      currentBusinessType === "hotel"
+                        ? "bg-blue-50 border-blue-200"
+                        : "bg-orange-50 border-orange-200"
+                    }`}>
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-blue-800">วันที่เลือก</span>
-                        <span className="text-sm font-bold text-blue-600">{selectedDates.length} วัน</span>
+                        <span className={`text-sm font-medium ${
+                          currentBusinessType === "hotel" ? "text-blue-800" : "text-orange-800"
+                        }`}>วันที่เลือก</span>
+                        <span className={`text-sm font-bold ${
+                          currentBusinessType === "hotel" ? "text-blue-600" : "text-orange-600"
+                        }`}>{selectedDates.length} วัน</span>
                       </div>
                       {selectedDates.length > 0 && (
-                        <div className="text-xs text-blue-600 max-h-16 overflow-y-auto">
+                        <div className={`text-xs max-h-16 overflow-y-auto ${
+                          currentBusinessType === "hotel" ? "text-blue-600" : "text-orange-600"
+                        }`}>
                           {selectedDates.length <= 10
                             ? selectedDates.map((day) => `${day}/${currentMonth}`).join(", ")
                             : `${selectedDates[0]}/${currentMonth} - ${selectedDates[selectedDates.length - 1]}/${currentMonth} และอื่นๆ`}
@@ -2101,7 +2141,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                       <div>
                         <label className="text-sm font-medium text-gray-700 block mb-1">กลุ่มประเภทลูกค้า</label>
                         <Select defaultValue="อาหารอีสาน">
-                          <SelectTrigger className="w-full bg-white border-teal-300">
+                          <SelectTrigger className={`w-full bg-white border ${
+                            currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                          }`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2115,7 +2157,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                       {/* Product Type */}
                       <div>
                         <label className="text-sm font-medium text-gray-700 block mb-1">ประเภทสินค้า</label>
-                        <div className="bg-white border border-teal-300 rounded-md p-2">
+                        <div className={`bg-white border rounded-md p-2 ${
+                          currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                        }`}>
                           <span className="text-sm text-gray-600">สินค้า, ลาน, น้ำตก</span>
                         </div>
                       </div>
@@ -2125,7 +2169,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                           <label className="text-sm font-medium text-gray-700 block mb-1">
                             ลูกค้า<label className="text-red-500">*</label>
                           </label>
-                          <div className="bg-white border border-teal-300 rounded-md p-3">
+                          <div className={`bg-white border rounded-md p-3 ${
+                            currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                          }`}>
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex-1 text-gray-900 font-medium">
                                 {customerData ? customerData.name : (
@@ -2133,7 +2179,11 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                                 )}
                               </div>
                               <Button
-                                className="bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-md shadow-sm transition-colors whitespace-nowrap"
+                                className={`text-white text-sm px-4 py-2 rounded-md shadow-sm transition-colors whitespace-nowrap ${
+                                  currentBusinessType === "hotel"
+                                    ? "bg-blue-500 hover:bg-blue-600"
+                                    : "bg-green-600 hover:bg-green-700"
+                                }`}
                                 onClick={() => setShowCustomerDialog(true)}
                               >
                                 <SearchIcon /> ค้นหาชื่อลูกค้า
@@ -2145,7 +2195,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                       {/* Number of Days */}
                       <div>
                         <label className="text-sm font-medium text-gray-700 block mb-1">จำนวนวัน</label>
-                        <div className="bg-white border border-teal-300 rounded-md p-2 text-right">
+                        <div className={`bg-white border rounded-md p-2 text-right ${
+                          currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                        }`}>
                           <span className="text-sm font-medium">{bookingSummary.totalDays}</span>
                         </div>
                       </div>
@@ -2153,7 +2205,9 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                       {/* Total Price */}
                       <div>
                         <label className="text-sm font-medium text-gray-700 block mb-1">ราคารวม</label>
-                        <div className="bg-white border border-teal-300 rounded-md p-2 text-right">
+                        <div className={`bg-white border rounded-md p-2 text-right ${
+                          currentBusinessType === "hotel" ? "border-blue-300" : "border-teal-300"
+                        }`}>
                           <span className="text-sm font-medium">{bookingSummary.totalPrice}.00</span>
                         </div>
                       </div>
@@ -2164,7 +2218,11 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                       <Button
                         onClick={handleConfirm}
                         disabled={bookingData.length === 0 || !customerData}
-                        className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                        className={`w-full text-white rounded-lg disabled:opacity-50 ${
+                          currentBusinessType === "hotel"
+                            ? "bg-blue-500 hover:bg-blue-600"
+                            : "bg-green-600 hover:bg-green-700"
+                        }`}
                       >
                         Confirm
                       </Button>
@@ -2175,8 +2233,58 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
             </Card>
           </div>
 
+          {/* Hotel Room Dialog - Only for hotel business type */}
+          {currentBusinessType === "hotel" && (
+            <div
+              className={`absolute top-4 right-4 transition-all duration-300 ${showHotelRoomDialog ? "translate-x-0" : "translate-x-full"}`}
+            >
+              <div className="max-w-sm bg-white rounded-2xl shadow p-5 border border-gray-100">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-xl font-semibold text-gray-800">ห้อง {selectedProperty?.name || '101'}</h2>
+                  <span className="bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full">
+                    ว่าง
+                  </span>
+                </div>
+
+                {/* Room Type + Price */}
+                <div className="flex justify-between items-center border-b pb-3 mb-3">
+                  <div className="text-gray-500">
+                    <p className="text-sm">ประเภทห้อง</p>
+                    <p className="text-blue-600 font-medium">{selectedRoomType || 'Standard'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">ราคาต่อคืน</p>
+                    <p className="text-green-600 font-semibold text-lg">฿{selectedProperty?.d_price.toLocaleString() || '1,500'}</p>
+                  </div>
+                </div>
+
+                {/* Availability */}
+                <div className="text-gray-700 space-y-2 mb-4">
+                  <p className="font-medium">ตรวจสอบความพร้อม</p>
+                  <div className="flex items-center text-sm text-gray-600">
+                    <Calendar className="w-4 h-4 mr-2 text-gray-500" />
+                    <span>10 ต.ค. 2025 - 13 ต.ค. 2025</span>
+                  </div>
+                  <div className="flex items-center text-sm text-green-600">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    <span>ห้องว่างตามวันที่ต้องการ (3 คืน)</span>
+                  </div>
+                </div>
+
+                {/* Button */}
+                <button
+                  className="w-full bg-black text-white rounded-xl py-2.5 hover:bg-gray-800 transition"
+                  onClick={handleConfirmHotelRoom}
+                >
+                  ยืนยันการจอง
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Detail Panel Toggle Button - แสดงเฉพาะเมื่อไม่มีกรอบใดแสดงอยู่ */}
-          {!showPropertyList && !showDetailPanel && (
+          {!showPropertyList && !showDetailPanel && !showHotelRoomDialog && (
             <Button
               onClick={() => setShowDetailPanel(!showDetailPanel)}
               className="absolute top-4 right-4 transition-all duration-300 h-12 w-12 rounded-full bg-green-500 hover:bg-green-600 shadow-lg z-10"
