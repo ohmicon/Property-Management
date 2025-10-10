@@ -27,6 +27,14 @@ export interface Circle {
   d_price: number // ราคาเช่ารายวัน
 }
 
+export interface Customer {
+  id: string
+  name: string
+  room_type: string
+  phone?: string
+  email?: string
+}
+
 export interface SearchUnitMatrix {
   year: number;
   month: number;
@@ -46,8 +54,29 @@ interface CanvasMapProps {
   onLoading?: (isLoading: boolean) => void
   onChangeFilterDay?: (day: number) => void,
   focus: {x: number | null, y: number | null}
-  selectedRoomType?: "Suite" | "Standard" | "Deluxe" | null; // "Suite" | "Standard" | "Deluxe" | null
+  selectedRoomType?: string | null // "Suite" | "Standard" | "Deluxe" | null
+  customers?: Customer[] // รายชื่อลูกค้า
+  selectedCustomer?: Customer | null // ลูกค้าที่เลือก
+  onCustomerSelect?: (customer: Customer | null) => void // callback เมื่อเลือกลูกค้า
 }
+
+export const ROOM_TYPE_COLORS = {
+  Suite: {
+    primary: "#ec4899", // pink-500
+    secondary: "#db2777",
+    glow: "rgba(236, 72, 153, 0.6)",
+  },
+  Standard: {
+    primary: "#8b5cf6", // violet-500
+    secondary: "#7c3aed",
+    glow: "rgba(139, 92, 246, 0.6)",
+  },
+  Deluxe: {
+    primary: "#f59e0b", // amber-500
+    secondary: "#d97706",
+    glow: "rgba(245, 158, 11, 0.6)",
+  },
+} as const
 
 export default function CanvasMap({ 
   onCircleClick,
@@ -62,6 +91,9 @@ export default function CanvasMap({
   onChangeFilterDay,
   focus,
   selectedRoomType,
+  customers,
+  selectedCustomer,
+  onCustomerSelect
 }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
@@ -100,192 +132,199 @@ export default function CanvasMap({
 // ใช้ zustand อ่านข้อมูลลูกค้า
   
   // Status colors - different styles for own vs others' bookings
-  const getCircleStyle = (circle: Circle) => {
-    // Check if this circle is selected in Property List
+  const getCircleStyle = useCallback((circle: Circle) => {
     const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
     const isMatchingRoomType = selectedRoomType ? circle.room_type === selectedRoomType : false
     const hasRoomTypeFilter = selectedRoomType !== null && selectedRoomType !== undefined
 
-    // ถ้าไม่ตรงกับ room type ที่เลือก → ทำให้จาง/เทา
-  if (hasRoomTypeFilter && !isMatchingRoomType) {
+    // ดึงสีของ room type
+    const roomColor =
+      circle.room_type && ROOM_TYPE_COLORS[circle.room_type as keyof typeof ROOM_TYPE_COLORS]
+        ? ROOM_TYPE_COLORS[circle.room_type as keyof typeof ROOM_TYPE_COLORS]
+        : { primary: "#8b5cf6", secondary: "#7c3aed", glow: "rgba(139, 92, 246, 0.6)" }
+
+    // ถ้ามี filter และห้องไม่ตรง → จาง
+    if (hasRoomTypeFilter && !isMatchingRoomType) {
       return {
-        fillColor: "rgba(150, 150, 150, 0.3)", // สีเทาจาง
-        strokeColor: "rgba(100, 100, 100, 0.5)",
-        strokeWidth: 1,
+        fillColor: "rgba(156, 163, 175, 0.3)",
+        strokeColor: "rgba(107, 114, 128, 0.4)",
+        outerStrokeColor: "rgba(156, 163, 175, 0.3)",
+        strokeWidth: 2,
+        outerStrokeWidth: 0,
         cursor: "not-allowed",
         isDimmed: true,
         textColor: "rgba(255, 255, 255, 0.5)",
       }
     }
 
-    // ถ้าตรงกับ room type และ available → Highlight!
+    // ถ้าตรงกับ filter และว่าง → Highlight!
     if (hasRoomTypeFilter && isMatchingRoomType && circle.status === "available") {
       return {
-        fillColor: "rgba(59, 130, 246, 0.9)", // น้ำเงินสดใส
-        strokeColor: "rgba(37, 99, 235, 1)",
-        strokeWidth: 4,
+        fillColor: "#10b981",
+        strokeColor: "#ffffff",
+        outerStrokeColor: roomColor.primary,
+        strokeWidth: 3,
+        outerStrokeWidth: 6,
         cursor: "pointer",
         isHighlighted: true,
+        shouldFlash: true,
         textColor: "white",
-        shouldFlash: true, // เพิ่ม flashing effect
+        glowColor: roomColor.glow,
       }
     }
 
-    if (circle.status === 'available' && circle.initStatus === 'available') {
+    // Status colors ปกติ
+    if (circle.status === "available" && circle.initStatus === "available") {
       if (isSelectedInList) {
-        // Selected in Property List - blue highlight
         return {
           fillColor: "rgba(59, 130, 246, 0.8)",
-          strokeColor: "rgba(37, 99, 235, 1)",
+          strokeColor: "#ffffff",
+          outerStrokeColor: roomColor.primary,
           strokeWidth: 3,
-          cursor: 'pointer',
-          isSelected: true
+          outerStrokeWidth: 5,
+          cursor: "pointer",
+          isSelected: true,
+          textColor: "white",
         }
       } else {
         return {
           fillColor: "rgba(0, 200, 0, 0.7)",
-          strokeColor: "rgba(0, 150, 0, 1)",
+          strokeColor: "#ffffff",
+          outerStrokeColor: roomColor.primary,
           strokeWidth: 2,
-          cursor: 'pointer'
+          outerStrokeWidth: 4,
+          cursor: "pointer",
+          textColor: "white",
         }
       }
-    } else if (circle.status === 'pending') {
+    } else if (circle.status === "pending") {
       const isOwnBooking = circle.bookedBy === currentUsername
       if (isOwnBooking) {
-        // Own booking - bright orange with thick border
         return {
           fillColor: "rgba(255, 165, 0, 0.8)",
-          strokeColor: "rgba(255, 140, 0, 1)",
+          strokeColor: "#ffffff",
+          outerStrokeColor: roomColor.primary,
           strokeWidth: 4,
-          cursor: 'pointer'
+          outerStrokeWidth: 5,
+          cursor: "pointer",
+          textColor: "white",
         }
       } else {
-        // Others' booking - darker orange with dashed border
         return {
           fillColor: "rgba(200, 100, 0, 0.6)",
-          strokeColor: "rgba(150, 80, 0, 1)",
+          strokeColor: "#ffffff",
+          outerStrokeColor: roomColor.primary,
           strokeWidth: 2,
-          cursor: 'not-allowed',
-          isDashed: true
+          outerStrokeWidth: 4,
+          cursor: "not-allowed",
+          isDashed: true,
+          textColor: "rgba(255, 255, 255, 0.8)",
         }
       }
-    } else if (circle.status === 'some available' || circle.initStatus === 'some available') {
-      // partially booked status
+    } else if (circle.status === "some available" || circle.initStatus === "some available") {
       return {
         fillColor: "rgba(200, 200, 0, 0.7)",
-        strokeColor: "rgba(200, 160, 0, 1)",
+        strokeColor: "#ffffff",
+        outerStrokeColor: roomColor.primary,
         strokeWidth: 2,
-        cursor: 'default'
+        outerStrokeWidth: 4,
+        cursor: "default",
+        textColor: "white",
       }
     } else {
-      // booked status
       return {
         fillColor: "rgba(200, 0, 0, 0.7)",
-        strokeColor: "rgba(150, 0, 0, 1)",
+        strokeColor: "#ffffff",
+        outerStrokeColor: roomColor.primary,
         strokeWidth: 2,
-        cursor: 'default'
+        outerStrokeWidth: 4,
+        cursor: "default",
+        textColor: "white",
       }
     }
-  }
+  }, [selectedPropertyIds, selectedRoomType, currentUsername])
 
   // Initialize username and load circles
   useEffect(() => {
-    // ตั้งค่า user เข้า local storage
     const username = getOrCreateUsername()
     setCurrentUsername(username)
+
     const loadCircles = async () => {
       try {
         setIsLoadingCircles(true)
         if (onLoading) {
           onLoading(true)
         }
-        // const circlesData = await getCircles()
 
-        // test connect rental
         const searchUnitMatrixPayload = {
-          project_id: 'M004',
+          project_id: "M004",
           year: filterUnitMatrix?.year || 2025,
           month: filterUnitMatrix?.month || 9,
-          day: filterUnitMatrix?.day || filterDay || 0 // 0 means whole month
+          day: filterUnitMatrix?.day || filterDay || 0,
         }
         const unitMatrixData = await getUnitMatrixApi(searchUnitMatrixPayload)
 
-        let circlesData = unitMatrixData.data?.map((item) => {
-          // Assign room types to circles for demo purposes
-          // In a real application, this would come from the API
-          const roomTypes: ("Suite" | "Standard" | "Deluxe")[] = ["Suite", "Standard", "Deluxe"];
-          const randomRoomType = roomTypes[Math.floor(Math.random() * roomTypes.length)];
-          
-          return {
-            id: item.unit_id,
-            r: 23,
-            status: item.status_desc.toLocaleLowerCase(),
-            initStatus: item.status_desc.toLocaleLowerCase(),
-            x: item.x,
-            y: item.y,
-            name: item.unit_number,
-            room_type: randomRoomType, // Assign random room type for demo
-            m_price: item.m_price,
-            d_price: item.d_price
-          } as Circle
-        }) || []
+        let circlesData =
+          unitMatrixData.data?.map((item: any) => {
+            // ✅ กำหนด room_type แบบสุ่มสำหรับ demo
+            const roomTypes: ("Suite" | "Standard" | "Deluxe")[] = ["Suite", "Standard", "Deluxe"]
+            const randomRoomType = roomTypes[Math.floor(Math.random() * roomTypes.length)]
 
-        // filter x, y null
-        circlesData = circlesData.filter((item) => {
+            return {
+              id: item.unit_id,
+              r: 23,
+              status: item.status_desc.toLowerCase(),
+              initStatus: item.status_desc.toLowerCase(),
+              x: item.x,
+              y: item.y,
+              name: item.unit_number,
+              room_type: randomRoomType, // ✅ ในระบบจริง ให้ดึงจาก API
+              m_price: item.m_price,
+              d_price: item.d_price,
+            } as Circle
+          }) || []
+
+        circlesData = circlesData.filter((item: Circle) => {
           return !(!item.x || item.x === 0) && !(!item.y || item.y === 0)
         })
 
-        // Request current temporary bookings state from server
         if (socket && socket.connected) {
-          console.log('📡 Requesting current booking state from server...')
-          socket.emit('requestCurrentState')
+          console.log("📡 Requesting current booking state from server...")
+          socket.emit("requestCurrentState")
         }
 
-        // Process circles data from API
-        setCircles(prevCircles => {
-          const mergedCircles = circlesData.map(dbCircle => {
-            // If the circle is already booked in the API data, keep it as booked
-            // This is authoritative and should never be overridden
-            if (dbCircle.status === 'booked') {
-              return dbCircle
-            }
-            else if (dbCircle.status === 'some available') {
+        setCircles((prevCircles) => {
+          const mergedCircles = circlesData.map((dbCircle: Circle) => {
+            if (dbCircle.status === "booked" || dbCircle.status === "some available") {
               return dbCircle
             }
 
-            // Check if this circle has a pending status in our current state
-            const existingCircle = prevCircles.find(c => c.id === dbCircle.id)
-            if (existingCircle && existingCircle.status === 'pending') {
-              // Preserve pending booking state from current state
-              console.log(`🔄 Preserving pending status for ${dbCircle.id} booked by ${existingCircle.bookedBy}`)
+            const existingCircle = prevCircles.find((c) => c.id === dbCircle.id)
+            if (existingCircle && existingCircle.status === "pending") {
               return existingCircle
             }
 
-            // For available circles, use the API data
             return {
               ...dbCircle,
-              status: 'available' as const,
+              status: "available" as const,
               bookedBy: undefined,
-              bookedAt: undefined
+              bookedAt: undefined,
             }
           })
 
-          // Count booked and pending circles for logging
-          const bookedCount = mergedCircles.filter(c => c.status === 'booked').length
-          const pendingCount = mergedCircles.filter(c => c.status === 'pending').length
+          const bookedCount = mergedCircles.filter((c) => c.status === "booked").length
+          const pendingCount = mergedCircles.filter((c) => c.status === "pending").length
 
-          console.log(`✅ Loaded circles with preserved states: ${mergedCircles.length} total, ${bookedCount} booked, ${pendingCount} pending`)
+          console.log(
+            `✅ Loaded circles: ${mergedCircles.length} total, ${bookedCount} booked, ${pendingCount} pending`,
+          )
 
-          // Update active bookings count for UI
           setActiveBookingsCount(pendingCount)
-
           return mergedCircles
         })
-
-        console.log('👤 Current user:', currentUsername)
       } catch (error) {
-        console.error('❌ Failed to load circles:', error)
-        toast.error('ไม่สามารถโหลดข้อมูลจุดจองได้')
+        console.error("❌ Failed to load circles:", error)
+        toast.error("ไม่สามารถโหลดข้อมูลจุดจองได้")
       } finally {
         setIsLoadingCircles(false)
         if (onLoading) {
@@ -566,106 +605,101 @@ export default function CanvasMap({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.save()
 
-    // Apply transformations
     ctx.translate(offsetRef.current.x, offsetRef.current.y)
     ctx.scale(scaleRef.current, scaleRef.current)
 
-    // Draw background image
     ctx.drawImage(backgroundImage, 0, 0)
 
-    // Draw circles with different styles
     circles.forEach((circle) => {
       const style = getCircleStyle(circle)
-      
+
+      // วาด outer stroke (border นอก)
+      if (style.outerStrokeWidth && style.outerStrokeWidth > 0) {
+        if (style.shouldFlash) {
+          const flashIntensity = Math.sin(flashPhase) * 0.5 + 0.5
+          const pulseSize = 10 + flashIntensity * 8
+
+          ctx.beginPath()
+          ctx.arc(circle.x, circle.y, circle.r + pulseSize, 0, Math.PI * 2)
+          ctx.strokeStyle = style.outerStrokeColor || "#8b5cf6"
+          ctx.lineWidth = ((style.outerStrokeWidth || 0) + flashIntensity * 3) / scaleRef.current
+          ctx.stroke()
+
+          if (style.glowColor) {
+            ctx.shadowColor = style.glowColor
+            ctx.shadowBlur = (20 + flashIntensity * 15) / scaleRef.current
+          }
+        } else {
+          ctx.shadowBlur = 0
+          ctx.beginPath()
+          ctx.arc(circle.x, circle.y, circle.r + 8, 0, Math.PI * 2)
+          ctx.strokeStyle = style.outerStrokeColor || "#8b5cf6"
+          ctx.lineWidth = (style.outerStrokeWidth || 4) / scaleRef.current
+          ctx.stroke()
+        }
+      }
+
+      ctx.shadowBlur = 0
+
+      // วาดวงกลมหลัก
       ctx.beginPath()
       ctx.arc(circle.x, circle.y, circle.r, 0, Math.PI * 2)
-      
-      // Fill circle
       ctx.fillStyle = style.fillColor
       ctx.fill()
 
-       // เพิ่ม glow effect สำหรับห้องที่ highlight
-      // Glow effect สำหรับห้องที่ highlight
-      if (style.isHighlighted && style.shouldFlash) {
-        const flashIntensity = Math.sin(flashPhase) * 0.5 + 0.5
-        ctx.shadowColor = "rgba(59, 130, 246, 0.8)"
-        ctx.shadowBlur = (15 + flashIntensity * 10) / scaleRef.current
+      // วาด inner border
+      ctx.strokeStyle = style.strokeColor || "#ffffff"
+      ctx.lineWidth = (style.strokeWidth || 2) / scaleRef.current
 
-        // วงกลมพัลส์
-        ctx.strokeStyle = "rgba(59, 130, 246, " + (0.6 + flashIntensity * 0.4) + ")"
-        ctx.lineWidth = (6 + flashIntensity * 4) / scaleRef.current
-        ctx.beginPath()
-        ctx.arc(circle.x, circle.y, circle.r + 8, 0, Math.PI * 2)
-        ctx.stroke()
-      } else {
-        ctx.shadowBlur = 0
-      }
-      
-      // Draw border
-      ctx.fillStyle = style.textColor || "white"
-      ctx.font = `bold ${14 / scaleRef.current}px Arial`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "middle"
-      ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
-      
-      // Draw dashed border for others' bookings
       if (style.isDashed) {
         ctx.setLineDash([5 / scaleRef.current, 3 / scaleRef.current])
       } else {
         ctx.setLineDash([])
       }
-      
-      ctx.stroke()
-      ctx.setLineDash([]) // Reset line dash
-      ctx.shadowBlur = 0; // Reset shadow
 
-      // Draw room number
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // วาดเลขห้อง
       ctx.fillStyle = style.textColor || "white"
       ctx.font = `bold ${14 / scaleRef.current}px Arial`
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
-      ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
+      ctx.fillText(circle.name, circle.x, circle.y)
 
-      // Draw circle ID
-      ctx.fillStyle = style.isDimmed ? "rgba(255, 255, 255, 0.5)" : "white";      
-      ctx.font = `${12 / scaleRef.current}px Arial`
-      ctx.textAlign = "center"
-      ctx.fillText(circle.name, circle.x, circle.y - 8 / scaleRef.current)
-
+      // แสดง room type สำหรับห้องที่ highlight
       if (style.isHighlighted && circle.room_type) {
-      ctx.fillStyle = "#1e40af";
-      ctx.font = `bold ${10 / scaleRef.current}px Arial`;
-      ctx.fillText(circle.room_type, circle.x, circle.y + 8 / scaleRef.current);
-    }
-      
-      // Draw username for pending bookings with different colors
+        ctx.fillStyle = style.outerStrokeColor || "#1e40af"
+        ctx.font = `bold ${10 / scaleRef.current}px Arial`
+        ctx.fillText(circle.room_type, circle.x, circle.y + circle.r + 15 / scaleRef.current)
+      }
+
+      // แสดง username สำหรับ pending
       if (circle.status === "pending" && circle.bookedBy) {
         const isOwnBooking = circle.bookedBy === currentUsername
-        ctx.fillStyle = isOwnBooking ? "#473f3e" : "#786665" // Gold for own, orange for others
-        ctx.font = `${10 / scaleRef.current}px Arial`
-        ctx.fillText(circle.bookedBy, circle.x, circle.y + 8 / scaleRef.current)
-        
-        // Add indicator for own bookings
+        ctx.fillStyle = isOwnBooking ? "#473f3e" : "#786665"
+        ctx.font = `${9 / scaleRef.current}px Arial`
+        ctx.fillText(circle.bookedBy, circle.x, circle.y + 20 / scaleRef.current)
+
         if (isOwnBooking) {
           ctx.fillStyle = "#473f3e"
-          ctx.font = `${8 / scaleRef.current}px Arial`
-          ctx.fillText("(คุณ)", circle.x, circle.y + 18 / scaleRef.current)
+          ctx.font = `${7 / scaleRef.current}px Arial`
+          ctx.fillText("(คุณ)", circle.x, circle.y + 30 / scaleRef.current)
         }
       }
     })
 
     ctx.restore()
-  }, [backgroundImage, circles, currentUsername, ,flashPhase, selectedRoomType])
+  }, [backgroundImage, circles, getCircleStyle, flashPhase, currentUsername])
 
    useEffect(() => {
     let animationId: number
 
     const animate = () => {
-      setFlashPhase((prev) => prev + 0.1)
+      setFlashPhase((prev) => prev + 0.15)
       draw()
       animationId = requestAnimationFrame(animate)
     }
