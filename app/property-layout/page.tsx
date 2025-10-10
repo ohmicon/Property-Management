@@ -1673,6 +1673,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
                   }}
                   focus={focusCanvas}
                   selectedRoomType={selectedRoomType}
+                  businessType={currentBusinessType as "hotel" | "market"}
                 />
               </Spinner>
             </div>

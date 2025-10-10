@@ -58,6 +58,7 @@ interface CanvasMapProps {
   customers?: Customer[] // รายชื่อลูกค้า
   selectedCustomer?: Customer | null // ลูกค้าที่เลือก
   onCustomerSelect?: (customer: Customer | null) => void // callback เมื่อเลือกลูกค้า
+  businessType?: "hotel" | "market" // 🆕 เพิ่ม prop นี้
 }
 
 export const ROOM_TYPE_COLORS = {
@@ -93,7 +94,8 @@ export default function CanvasMap({
   selectedRoomType,
   customers,
   selectedCustomer,
-  onCustomerSelect
+  onCustomerSelect,
+  businessType = "market",
 }: CanvasMapProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
@@ -132,117 +134,181 @@ export default function CanvasMap({
 // ใช้ zustand อ่านข้อมูลลูกค้า
   
   // Status colors - different styles for own vs others' bookings
-  const getCircleStyle = useCallback((circle: Circle) => {
-    const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
-    const isMatchingRoomType = selectedRoomType ? circle.room_type === selectedRoomType : false
-    const hasRoomTypeFilter = selectedRoomType !== null && selectedRoomType !== undefined
+  const getCircleStyle = useCallback(
+    (circle: Circle) => {
+      const isSelectedInList = selectedPropertyIds?.has(circle.id) || false
 
-    // ดึงสีของ room type
-    const roomColor =
-      circle.room_type && ROOM_TYPE_COLORS[circle.room_type as keyof typeof ROOM_TYPE_COLORS]
-        ? ROOM_TYPE_COLORS[circle.room_type as keyof typeof ROOM_TYPE_COLORS]
-        : { primary: "#8b5cf6", secondary: "#7c3aed", glow: "rgba(139, 92, 246, 0.6)" }
+      // 🏨 Hotel Mode - รองรับ room type highlighting
+      if (businessType === "hotel") {
+        const isMatchingRoomType = selectedRoomType ? circle.room_type === selectedRoomType : false
+        const hasRoomTypeFilter = selectedRoomType !== null && selectedRoomType !== undefined
 
-    // ถ้ามี filter และห้องไม่ตรง → จาง
-    if (hasRoomTypeFilter && !isMatchingRoomType) {
-      return {
-        fillColor: "rgba(156, 163, 175, 0.3)",
-        strokeColor: "rgba(107, 114, 128, 0.4)",
-        outerStrokeColor: "rgba(156, 163, 175, 0.3)",
-        strokeWidth: 2,
-        outerStrokeWidth: 0,
-        cursor: "not-allowed",
-        isDimmed: true,
-        textColor: "rgba(255, 255, 255, 0.5)",
+        const roomColor =
+          circle.room_type && ROOM_TYPE_COLORS[circle.room_type as keyof typeof ROOM_TYPE_COLORS]
+            ? ROOM_TYPE_COLORS[circle.room_type as keyof typeof ROOM_TYPE_COLORS]
+            : { primary: "#8b5cf6", secondary: "#7c3aed", glow: "rgba(139, 92, 246, 0.6)" }
+
+        // ห้องที่ไม่ตรงกับ filter → จาง
+        if (hasRoomTypeFilter && !isMatchingRoomType) {
+          return {
+            fillColor: "rgba(156, 163, 175, 0.3)",
+            strokeColor: "rgba(107, 114, 128, 0.4)",
+            outerStrokeColor: "rgba(156, 163, 175, 0.3)",
+            strokeWidth: 2,
+            outerStrokeWidth: 0,
+            cursor: "not-allowed",
+            isDimmed: true,
+            textColor: "rgba(255, 255, 255, 0.5)",
+          }
+        }
+
+        // ห้องที่ตรงกับ filter และว่าง → Highlight!
+        if (hasRoomTypeFilter && isMatchingRoomType && circle.status === "available") {
+          return {
+            fillColor: "#10b981",
+            strokeColor: "#ffffff",
+            outerStrokeColor: roomColor.primary,
+            strokeWidth: 3,
+            outerStrokeWidth: 6,
+            cursor: "pointer",
+            isHighlighted: true,
+            shouldFlash: true,
+            textColor: "white",
+            glowColor: roomColor.glow,
+          }
+        }
+
+        // Status colors สำหรับ Hotel
+        if (circle.status === "available" && circle.initStatus === "available") {
+          if (isSelectedInList) {
+            return {
+              fillColor: "rgba(59, 130, 246, 0.8)",
+              strokeColor: "#ffffff",
+              outerStrokeColor: roomColor.primary,
+              strokeWidth: 3,
+              outerStrokeWidth: 5,
+              cursor: "pointer",
+              isSelected: true,
+              textColor: "white",
+            }
+          } else {
+            return {
+              fillColor: "rgba(0, 200, 0, 0.7)",
+              strokeColor: "#ffffff",
+              outerStrokeColor: roomColor.primary,
+              strokeWidth: 2,
+              outerStrokeWidth: 4,
+              cursor: "pointer",
+              textColor: "white",
+            }
+          }
+        } else if (circle.status === "pending") {
+          const isOwnBooking = circle.bookedBy === currentUsername
+          if (isOwnBooking) {
+            return {
+              fillColor: "rgba(255, 165, 0, 0.8)",
+              strokeColor: "#ffffff",
+              outerStrokeColor: roomColor.primary,
+              strokeWidth: 4,
+              outerStrokeWidth: 5,
+              cursor: "pointer",
+              textColor: "white",
+            }
+          } else {
+            return {
+              fillColor: "rgba(200, 100, 0, 0.6)",
+              strokeColor: "#ffffff",
+              outerStrokeColor: roomColor.primary,
+              strokeWidth: 2,
+              outerStrokeWidth: 4,
+              cursor: "not-allowed",
+              isDashed: true,
+              textColor: "rgba(255, 255, 255, 0.8)",
+            }
+          }
+        } else if (circle.status === "some available" || circle.initStatus === "some available") {
+          return {
+            fillColor: "rgba(200, 200, 0, 0.7)",
+            strokeColor: "#ffffff",
+            outerStrokeColor: roomColor.primary,
+            strokeWidth: 2,
+            outerStrokeWidth: 4,
+            cursor: "default",
+            textColor: "white",
+          }
+        } else {
+          return {
+            fillColor: "rgba(200, 0, 0, 0.7)",
+            strokeColor: "#ffffff",
+            outerStrokeColor: roomColor.primary,
+            strokeWidth: 2,
+            outerStrokeWidth: 4,
+            cursor: "default",
+            textColor: "white",
+          }
+        }
       }
-    }
 
-    // ถ้าตรงกับ filter และว่าง → Highlight!
-    if (hasRoomTypeFilter && isMatchingRoomType && circle.status === "available") {
-      return {
-        fillColor: "#10b981",
-        strokeColor: "#ffffff",
-        outerStrokeColor: roomColor.primary,
-        strokeWidth: 3,
-        outerStrokeWidth: 6,
-        cursor: "pointer",
-        isHighlighted: true,
-        shouldFlash: true,
-        textColor: "white",
-        glowColor: roomColor.glow,
-      }
-    }
-
-    // Status colors ปกติ
-    if (circle.status === "available" && circle.initStatus === "available") {
-      if (isSelectedInList) {
+      // 🏪 Market Mode - แบบเดิม (ไม่มี room type)
+      if (circle.status === "available" && circle.initStatus === "available") {
+        if (isSelectedInList) {
+          return {
+            fillColor: "rgba(59, 130, 246, 0.8)",
+            strokeColor: "rgba(37, 99, 235, 1)",
+            strokeWidth: 3,
+            cursor: "pointer",
+            isSelected: true,
+            textColor: "white",
+          }
+        } else {
+          return {
+            fillColor: "rgba(0, 200, 0, 0.7)",
+            strokeColor: "rgba(0, 150, 0, 1)",
+            strokeWidth: 2,
+            cursor: "pointer",
+            textColor: "white",
+          }
+        }
+      } else if (circle.status === "pending") {
+        const isOwnBooking = circle.bookedBy === currentUsername
+        if (isOwnBooking) {
+          return {
+            fillColor: "rgba(255, 165, 0, 0.8)",
+            strokeColor: "rgba(255, 140, 0, 1)",
+            strokeWidth: 4,
+            cursor: "pointer",
+            textColor: "white",
+          }
+        } else {
+          return {
+            fillColor: "rgba(200, 100, 0, 0.6)",
+            strokeColor: "rgba(150, 80, 0, 1)",
+            strokeWidth: 2,
+            cursor: "not-allowed",
+            isDashed: true,
+            textColor: "rgba(255, 255, 255, 0.8)",
+          }
+        }
+      } else if (circle.status === "some available" || circle.initStatus === "some available") {
         return {
-          fillColor: "rgba(59, 130, 246, 0.8)",
-          strokeColor: "#ffffff",
-          outerStrokeColor: roomColor.primary,
-          strokeWidth: 3,
-          outerStrokeWidth: 5,
-          cursor: "pointer",
-          isSelected: true,
+          fillColor: "rgba(200, 200, 0, 0.7)",
+          strokeColor: "rgba(200, 160, 0, 1)",
+          strokeWidth: 2,
+          cursor: "default",
           textColor: "white",
         }
       } else {
         return {
-          fillColor: "rgba(0, 200, 0, 0.7)",
-          strokeColor: "#ffffff",
-          outerStrokeColor: roomColor.primary,
+          fillColor: "rgba(200, 0, 0, 0.7)",
+          strokeColor: "rgba(150, 0, 0, 1)",
           strokeWidth: 2,
-          outerStrokeWidth: 4,
-          cursor: "pointer",
+          cursor: "default",
           textColor: "white",
         }
       }
-    } else if (circle.status === "pending") {
-      const isOwnBooking = circle.bookedBy === currentUsername
-      if (isOwnBooking) {
-        return {
-          fillColor: "rgba(255, 165, 0, 0.8)",
-          strokeColor: "#ffffff",
-          outerStrokeColor: roomColor.primary,
-          strokeWidth: 4,
-          outerStrokeWidth: 5,
-          cursor: "pointer",
-          textColor: "white",
-        }
-      } else {
-        return {
-          fillColor: "rgba(200, 100, 0, 0.6)",
-          strokeColor: "#ffffff",
-          outerStrokeColor: roomColor.primary,
-          strokeWidth: 2,
-          outerStrokeWidth: 4,
-          cursor: "not-allowed",
-          isDashed: true,
-          textColor: "rgba(255, 255, 255, 0.8)",
-        }
-      }
-    } else if (circle.status === "some available" || circle.initStatus === "some available") {
-      return {
-        fillColor: "rgba(200, 200, 0, 0.7)",
-        strokeColor: "#ffffff",
-        outerStrokeColor: roomColor.primary,
-        strokeWidth: 2,
-        outerStrokeWidth: 4,
-        cursor: "default",
-        textColor: "white",
-      }
-    } else {
-      return {
-        fillColor: "rgba(200, 0, 0, 0.7)",
-        strokeColor: "#ffffff",
-        outerStrokeColor: roomColor.primary,
-        strokeWidth: 2,
-        outerStrokeWidth: 4,
-        cursor: "default",
-        textColor: "white",
-      }
-    }
-  }, [selectedPropertyIds, selectedRoomType, currentUsername])
+    },
+    [selectedPropertyIds, selectedRoomType, currentUsername, businessType],
+  )
 
   // Initialize username and load circles
   useEffect(() => {
@@ -266,9 +332,12 @@ export default function CanvasMap({
 
         let circlesData =
           unitMatrixData.data?.map((item: any) => {
-            // ✅ กำหนด room_type แบบสุ่มสำหรับ demo
-            const roomTypes: ("Suite" | "Standard" | "Deluxe")[] = ["Suite", "Standard", "Deluxe"]
-            const randomRoomType = roomTypes[Math.floor(Math.random() * roomTypes.length)]
+            // 🏨 Hotel: กำหนด room_type (ควรมาจาก API)
+            let roomType = undefined
+            if (businessType === "hotel") {
+              const roomTypes: ("Suite" | "Standard" | "Deluxe")[] = ["Suite", "Standard", "Deluxe"]
+              roomType = item.room_type || roomTypes[Math.floor(Math.random() * roomTypes.length)]
+            }
 
             return {
               id: item.unit_id,
@@ -278,7 +347,7 @@ export default function CanvasMap({
               x: item.x,
               y: item.y,
               name: item.unit_number,
-              room_type: randomRoomType, // ✅ ในระบบจริง ให้ดึงจาก API
+              room_type: roomType, // Hotel มี, Market ไม่มี
               m_price: item.m_price,
               d_price: item.d_price,
             } as Circle
@@ -316,7 +385,7 @@ export default function CanvasMap({
           const pendingCount = mergedCircles.filter((c) => c.status === "pending").length
 
           console.log(
-            `✅ Loaded circles: ${mergedCircles.length} total, ${bookedCount} booked, ${pendingCount} pending`,
+            `✅ [${businessType.toUpperCase()}] Loaded ${mergedCircles.length} total, ${bookedCount} booked, ${pendingCount} pending`,
           )
 
           setActiveBookingsCount(pendingCount)
@@ -336,40 +405,37 @@ export default function CanvasMap({
     if (hasReceivedSocketData) {
       loadCircles()
     }
-  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
+  }, [hasReceivedSocketData, filterUnitMatrix, filterDay, businessType])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
-    if (!socket || !isConnected ) return
+    if (!socket || !isConnected) return
 
     const handleCircleUpdate = (updatedCircle: Circle) => {
-      console.log('📡 Received real-time circle update:', updatedCircle)
-      
-      // Update local state only - DO NOT broadcast again
-      setCircles(prevCircles => {
-        const newCircles = prevCircles.map(circle => 
-          circle.id === updatedCircle.id ? updatedCircle : circle
-        )
-        // Update active bookings count
-        const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+      console.log("📡 Received real-time circle update:", updatedCircle)
+
+      setCircles((prevCircles) => {
+        const newCircles = prevCircles.map((circle) => (circle.id === updatedCircle.id ? updatedCircle : circle))
+        const newActiveCount = newCircles.filter((c) => c.status === "pending").length
         setActiveBookingsCount(newActiveCount)
-        console.log(`🔄 Updated active bookings count: ${newActiveCount}`);
         return newCircles
       })
-      
-      const statusText = updatedCircle.status === 'available' ? 'ว่าง' : 
-                        updatedCircle.status === 'pending' ? `ถูกจองโดย ${updatedCircle.bookedBy}` : 'ขายแล้ว'
+
+      const statusText =
+        updatedCircle.status === "available"
+          ? "ว่าง"
+          : updatedCircle.status === "pending"
+            ? `ถูกจองโดย ${updatedCircle.bookedBy}`
+            : "ขายแล้ว"
       toast.info(`🔄 ${updatedCircle.name} เปลี่ยนเป็น ${statusText}`)
     }
 
-    // Add socket listener for real-time updates
-    socket.on('circleUpdated', handleCircleUpdate)
-    console.log('🔌 Listening for real-time circle updates...')
-    
+    socket.on("circleUpdated", handleCircleUpdate)
+    console.log("🔌 Listening for real-time circle updates...")
+
     return () => {
-      // Remove socket listener on cleanup
-      socket.off('circleUpdated', handleCircleUpdate)
-      console.log('📋 Stopped listening for circle updates')
+      socket.off("circleUpdated", handleCircleUpdate)
+      console.log("📋 Stopped listening for circle updates")
     }
   }, [socket, isConnected])
 
@@ -377,147 +443,126 @@ export default function CanvasMap({
   useEffect(() => {
     const handleTemporaryBookingsReceived = (event: CustomEvent) => {
       const bookings = event.detail as Array<{ circleId: string; bookedBy: string; bookedAt: number }>
-      console.log('📦 Processing current booking state from server:', bookings)
-      
-      // Mark that we've received socket data
+      console.log("📦 Processing current booking state from server:", bookings)
+
       setHasReceivedSocketData(true)
-      
+
       if (bookings.length > 0) {
-        let updatedCount = 0;
-        setCircles(prevCircles => {
-          const newCircles = prevCircles.map(circle => {
-            // Don't modify circles that are already booked from API - this is authoritative
-            if (circle.status === 'booked') {
-              console.log(`🔒 Preserving booked status for ${circle.id} (API authoritative)`);
-              return circle;
+        let updatedCount = 0
+        setCircles((prevCircles) => {
+          const newCircles = prevCircles.map((circle) => {
+            if (circle.status === "booked") {
+              return circle
             }
-            
-            const booking = bookings.find(b => b.circleId === circle.id)
+
+            const booking = bookings.find((b) => b.circleId === circle.id)
             if (booking) {
-              updatedCount++;
-              console.log(`📍 Applying booking: ${circle.id} -> ${booking.bookedBy}`);
+              updatedCount++
               return {
                 ...circle,
-                status: 'pending' as const,
+                status: "pending" as const,
                 bookedBy: booking.bookedBy,
-                bookedAt: booking.bookedAt
+                bookedAt: booking.bookedAt,
               }
             }
-            // Reset circles that are not in current bookings to available
-            // but only if they are currently pending
-            if (circle.status === 'pending') {
-              console.log(`🔄 Resetting ${circle.id} to available (not in current bookings)`);
+
+            if (circle.status === "pending") {
               return {
                 ...circle,
-                status: 'available' as const,
+                status: "available" as const,
                 bookedBy: undefined,
-                bookedAt: undefined
+                bookedAt: undefined,
               }
             }
             return circle
           })
-          
-          // Notify parent component about changes if needed
+
           if (onCirclesChange) {
-            setTimeout(() => onCirclesChange(newCircles), 0);
+            setTimeout(() => onCirclesChange(newCircles), 0)
           }
-          
-          return newCircles;
+
+          return newCircles
         })
-        console.log(`✅ Updated ${updatedCount} circles with current booking state`);
-        setActiveBookingsCount(updatedCount);
-        toast.success(`📍 โหลดสถานะการจองปัจจุบันแล้ว (${updatedCount} จุดถูกจอง)`);
+        setActiveBookingsCount(updatedCount)
+        toast.success(`📍 โหลดสถานะการจองปัจจุบันแล้ว (${updatedCount} จุดถูกจอง)`)
       } else {
-        // No active bookings - reset all pending circles to available
-        // but preserve booked status
-        setCircles(prevCircles => {
-          const newCircles = prevCircles.map(circle => {
-            // Don't modify circles that are already booked - this is authoritative
-            if (circle.status === 'booked') {
-              return circle;
+        setCircles((prevCircles) => {
+          const newCircles = prevCircles.map((circle) => {
+            if (circle.status === "booked") {
+              return circle
             }
-            
-            if (circle.status === 'pending') {
-              console.log(`🔄 Resetting ${circle.id} to available (no active bookings)`);
+
+            if (circle.status === "pending") {
               return {
                 ...circle,
-                status: 'available' as const,
+                status: "available" as const,
                 bookedBy: undefined,
-                bookedAt: undefined
+                bookedAt: undefined,
               }
             }
             return circle
           })
-          
-          // Notify parent component about changes if needed
+
           if (onCirclesChange) {
-            setTimeout(() => onCirclesChange(newCircles), 0);
+            setTimeout(() => onCirclesChange(newCircles), 0)
           }
-          
-          return newCircles;
+
+          return newCircles
         })
-        console.log('✨ No active bookings - pending circles reset to available');
-        setActiveBookingsCount(0);
-        toast.info('✨ ไม่มีการจองในขณะนี้');
+        setActiveBookingsCount(0)
+        toast.info("✨ ไม่มีการจองในขณะนี้")
       }
     }
 
-    // Listen for custom event from socket hook
-    window.addEventListener('temporaryBookingsReceived', handleTemporaryBookingsReceived as EventListener)
-    
+    window.addEventListener("temporaryBookingsReceived", handleTemporaryBookingsReceived as EventListener)
+
     return () => {
-      window.removeEventListener('temporaryBookingsReceived', handleTemporaryBookingsReceived as EventListener)
+      window.removeEventListener("temporaryBookingsReceived", handleTemporaryBookingsReceived as EventListener)
     }
   }, [])
 
   // Listen for bookings released when clients disconnect
-  useEffect(() => {
+   useEffect(() => {
     const handleBookingsReleased = (event: CustomEvent) => {
       const releasedCircles = event.detail as Array<{ id: string; status: string; bookedBy?: string; bookedAt?: number }>
-      console.log('🔓 Processing released bookings:', releasedCircles)
-      
+      console.log("🔓 Processing released bookings:", releasedCircles)
+
       if (releasedCircles.length > 0) {
-        setCircles(prevCircles => {
-          const newCircles = prevCircles.map(circle => {
-            // Don't modify circles that are already booked from API - this is authoritative
-            if (circle.status === 'booked') {
-              console.log(`🔒 Preserving booked status for ${circle.id} (API authoritative)`);
+        setCircles((prevCircles) => {
+          const newCircles = prevCircles.map((circle) => {
+            if (circle.status === "booked") {
               return circle
             }
-            
-            const releasedCircle = releasedCircles.find(r => r.id === circle.id)
+
+            const releasedCircle = releasedCircles.find((r) => r.id === circle.id)
             if (releasedCircle) {
-              console.log(`🔓 Releasing circle: ${circle.id} from pending state`)
               return {
                 ...circle,
-                status: 'available' as const,
+                status: "available" as const,
                 bookedBy: undefined,
-                bookedAt: undefined
+                bookedAt: undefined,
               }
             }
             return circle
           })
-          
-          // Update active bookings count
-          const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+
+          const newActiveCount = newCircles.filter((c) => c.status === "pending").length
           setActiveBookingsCount(newActiveCount)
-          
-          // Notify parent component about changes if needed
+
           if (onCirclesChange) {
-            setTimeout(() => onCirclesChange(newCircles), 0);
+            setTimeout(() => onCirclesChange(newCircles), 0)
           }
-          
+
           return newCircles
         })
-        toast.success(`🔓 ปล่อยห้องจากการ disconnect (${releasedCircles.length} รายการ)`);
+        toast.success(`🔓 ปล่อยห้องจากการ disconnect (${releasedCircles.length} รายการ)`)
       }
     }
 
-    // Listen for custom event from socket hook
-    window.addEventListener('bookingsReleased', handleBookingsReleased as EventListener)
-    
+    window.addEventListener("bookingsReleased", handleBookingsReleased as EventListener)
+
     return () => {
-      window.removeEventListener('bookingsReleased', handleBookingsReleased as EventListener)
+      window.removeEventListener("bookingsReleased", handleBookingsReleased as EventListener)
     }
   }, [])
   
@@ -616,8 +661,8 @@ export default function CanvasMap({
     circles.forEach((circle) => {
       const style = getCircleStyle(circle)
 
-      // วาด outer stroke (border นอก)
-      if (style.outerStrokeWidth && style.outerStrokeWidth > 0) {
+      // วาด outer stroke (สำหรับ Hotel mode เท่านั้น)
+      if (businessType === "hotel" && style.outerStrokeWidth && style.outerStrokeWidth > 0) {
         if (style.shouldFlash) {
           const flashIntensity = Math.sin(flashPhase) * 0.5 + 0.5
           const pulseSize = 10 + flashIntensity * 8
@@ -650,7 +695,7 @@ export default function CanvasMap({
       ctx.fillStyle = style.fillColor
       ctx.fill()
 
-      // วาด inner border
+      // วาด border
       ctx.strokeStyle = style.strokeColor || "#ffffff"
       ctx.lineWidth = (style.strokeWidth || 2) / scaleRef.current
 
@@ -663,15 +708,15 @@ export default function CanvasMap({
       ctx.stroke()
       ctx.setLineDash([])
 
-      // วาดเลขห้อง
+      // วาดเลขห้อง/ยูนิต
       ctx.fillStyle = style.textColor || "white"
       ctx.font = `bold ${14 / scaleRef.current}px Arial`
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
       ctx.fillText(circle.name, circle.x, circle.y)
 
-      // แสดง room type สำหรับห้องที่ highlight
-      if (style.isHighlighted && circle.room_type) {
+      // แสดง room type (Hotel mode เท่านั้น)
+      if (businessType === "hotel" && style.isHighlighted && circle.room_type) {
         ctx.fillStyle = style.outerStrokeColor || "#1e40af"
         ctx.font = `bold ${10 / scaleRef.current}px Arial`
         ctx.fillText(circle.room_type, circle.x, circle.y + circle.r + 15 / scaleRef.current)
@@ -682,18 +727,19 @@ export default function CanvasMap({
         const isOwnBooking = circle.bookedBy === currentUsername
         ctx.fillStyle = isOwnBooking ? "#473f3e" : "#786665"
         ctx.font = `${9 / scaleRef.current}px Arial`
-        ctx.fillText(circle.bookedBy, circle.x, circle.y + 20 / scaleRef.current)
+        const yOffset = businessType === "hotel" && style.isHighlighted ? 30 : 20
+        ctx.fillText(circle.bookedBy, circle.x, circle.y + yOffset / scaleRef.current)
 
         if (isOwnBooking) {
           ctx.fillStyle = "#473f3e"
           ctx.font = `${7 / scaleRef.current}px Arial`
-          ctx.fillText("(คุณ)", circle.x, circle.y + 30 / scaleRef.current)
+          ctx.fillText("(คุณ)", circle.x, circle.y + (yOffset + 10) / scaleRef.current)
         }
       }
     })
 
     ctx.restore()
-  }, [backgroundImage, circles, getCircleStyle, flashPhase, currentUsername])
+  }, [backgroundImage, circles, getCircleStyle, flashPhase, currentUsername, businessType])
 
    useEffect(() => {
     let animationId: number
@@ -704,7 +750,7 @@ export default function CanvasMap({
       animationId = requestAnimationFrame(animate)
     }
 
-    if (selectedRoomType) {
+    if (businessType === "hotel" && selectedRoomType) {
       animationId = requestAnimationFrame(animate)
     } else {
       draw()
@@ -715,7 +761,7 @@ export default function CanvasMap({
         cancelAnimationFrame(animationId)
       }
     }
-  }, [selectedRoomType, draw])
+  }, [businessType, selectedRoomType, draw])
 
 
   // Initialize canvas
@@ -880,6 +926,11 @@ export default function CanvasMap({
     [circles]
   )
 
+  const highlightedRoomsCount = circles.filter(
+    (c) => selectedRoomType && c.room_type === selectedRoomType && c.status === "available",
+  ).length
+
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       const canvas = canvasRef.current
@@ -914,21 +965,24 @@ export default function CanvasMap({
   // Handle circle click logic
   const handleCircleClick = useCallback(
     async (circle: Circle) => {
+      // 🏨 Hotel Mode: เช็คว่าห้องตรงกับ room type ที่เลือกหรือไม่
+      if (businessType === "hotel" && selectedRoomType && circle.room_type !== selectedRoomType) {
+        toast.error(`ห้องนี้เป็นประเภท ${circle.room_type} ไม่ตรงกับที่ต้องการ (${selectedRoomType})`)
+        return
+      }
+
       try {
-        let newStatus: Circle['status']
+        let newStatus: Circle["status"]
         let newBookedBy: string | undefined
         let newBookedAt: number | undefined
 
-        if (circle.status === 'available' || circle.status === 'some available') {
-          // Anyone can book available circles
-          newStatus = 'pending'
+        if (circle.status === "available" || circle.status === "some available") {
+          newStatus = "pending"
           newBookedBy = currentUsername
           newBookedAt = Date.now()
           toast.success(`จอง ${circle.name} สำเร็จ!`)
-        } else if (circle.status === 'pending') {
-          // Only the person who booked can cancel
+        } else if (circle.status === "pending") {
           if (circle.bookedBy === currentUsername) {
-            console.log('circle.initStatus', circle)
             newStatus = circle.initStatus
             newBookedBy = undefined
             newBookedAt = undefined
@@ -938,7 +992,6 @@ export default function CanvasMap({
             return
           }
         } else {
-          // Booked circles cannot be changed
           toast.info(`${circle.name} ถูกจองแล้ว`)
           return
         }
@@ -947,29 +1000,24 @@ export default function CanvasMap({
           ...circle,
           status: newStatus,
           bookedBy: newBookedBy,
-          bookedAt: newBookedAt
+          bookedAt: newBookedAt,
         }
 
-        // Optimistic update
-        setCircles(prevCircles => {
-          const newCircles = prevCircles.map(c => c.id === circle.id ? updatedCircle : c)
-          // Update active bookings count
-          const newActiveCount = newCircles.filter(c => c.status === 'pending').length
+        setCircles((prevCircles) => {
+          const newCircles = prevCircles.map((c) => (c.id === circle.id ? updatedCircle : c))
+          const newActiveCount = newCircles.filter((c) => c.status === "pending").length
           setActiveBookingsCount(newActiveCount)
           return newCircles
         })
 
-        // Broadcast to other clients
         broadcastCircleUpdate(updatedCircle)
-
-        // Call parent callback if provided
         onCircleClick?.(updatedCircle)
       } catch (error) {
-        console.error('❌ Failed to update circle:', error)
-        toast.error('ไม่สามารถอัปเดตสถานะได้')
+        console.error("❌ Failed to update circle:", error)
+        toast.error("ไม่สามารถอัปเดตสถานะได้")
       }
     },
-    [currentUsername, broadcastCircleUpdate, onCircleClick]
+    [currentUsername, broadcastCircleUpdate, onCircleClick, businessType, selectedRoomType],
   )
 
   // Handle canvas click
