@@ -50,7 +50,7 @@ export default function CustomerBookingCard({
       </div>
 
       {/* Room Type Filter */}
-      <div className="p-3 md:p-4 border-b bg-gray-50">
+      {/* <div className="p-3 md:p-4 border-b bg-gray-50">
         <div className="flex items-center gap-2 mb-2">
           <Filter className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-medium">ประเภทห้อง:</span>
@@ -78,7 +78,7 @@ export default function CustomerBookingCard({
             {HOTEL_ROOM_TYPES[selectedRoomType as keyof typeof HOTEL_ROOM_TYPES].description}
           </p>
         )}
-      </div>
+      </div> */}
 
       <ScrollArea className="flex-1">
         <div className="p-3 md:p-4 space-y-4">
