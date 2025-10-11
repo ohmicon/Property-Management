@@ -11,6 +11,7 @@ import { useRealtimeBooking } from "@/hooks/use-realtime-booking"
 import { getUnitMatrixApi } from "@/lib/api/unit-matrix"
 import { cn } from "@/lib/utils"
 import { useCustomerStore } from "@/app/customer-store"
+import { useUserStore } from "@/app/user-store"
 
 export interface Circle {
   x: number
@@ -70,6 +71,7 @@ export default function CanvasMap({
   const [filterDay, setFilterDay] = useState<number | null>(null) // วันที่เลือก (สำหรับโหมด day)
   
   const customer = useCustomerStore((state) => state.customer); 
+  const { user: userLogin } = useUserStore();
   // Real-time booking hook
   const { socket, isConnected, isLoading, broadcastCircleUpdate } = useRealtimeBooking()
   
@@ -160,7 +162,10 @@ export default function CanvasMap({
   // Initialize username and load circles
   useEffect(() => {
     // ตั้งค่า user เข้า local storage
-    const username = getOrCreateUsername()
+    if (userLogin && userLogin.username) {
+      setCurrentUsernameStorage(userLogin.username)
+    }
+    const username = userLogin?.username || getOrCreateUsername()
     setCurrentUsername(username)
     const loadCircles = async () => {
       try {
@@ -260,7 +265,7 @@ export default function CanvasMap({
     if (hasReceivedSocketData) {
       loadCircles()
     }
-  }, [hasReceivedSocketData, filterUnitMatrix, filterDay])
+  }, [hasReceivedSocketData, filterUnitMatrix, filterDay, userLogin])
 
   // Listen for real-time circle updates from other clients
   useEffect(() => {
