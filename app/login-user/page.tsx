@@ -11,11 +11,14 @@ export default function LoginUserPage() {
     const user_id = params.get('u');
     const username = params.get('username');
     const projectId = params.get('p');
+    const type = params.get('type')
 
     if (user_id && username) {
       const resultLogin = await loginUser({ user_id, username });
       if (resultLogin.success) {
-        window.location.href = process.env.NEXT_PUBLIC_BASE_PATH + (projectId ? `?p=${projectId}` : '');
+        window.location.href = (process.env.NEXT_PUBLIC_BASE_PATH !== "" ? process.env.NEXT_PUBLIC_BASE_PATH : '/') 
+        + (projectId ? `?p=${projectId}` : '')
+        + (type ? `${projectId ? '&' : '?'}type=${type}` : '')
       } else {
         alert('Login failed: ' + resultLogin.message);
       }
