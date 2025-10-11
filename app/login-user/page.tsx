@@ -15,7 +15,7 @@ export default function LoginUserPage() {
     if (user_id && username) {
       const resultLogin = await loginUser({ user_id, username });
       if (resultLogin.success) {
-        window.location.href = '/' + (projectId ? `?p=${projectId}` : '');
+        window.location.href = process.env.NEXT_PUBLIC_BASE_PATH + (projectId ? `?p=${projectId}` : '');
       } else {
         alert('Login failed: ' + resultLogin.message);
       }
