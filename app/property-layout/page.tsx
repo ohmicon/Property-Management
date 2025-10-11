@@ -22,6 +22,7 @@ import { getUnitBookingDateApi, UnitBookingDate, bookUnitApi, IPayloadBookUnit }
 import { useCustomerStore } from "../customer-store"; // เพิ่มบรรทัดนี้
 import { axiosPublic } from "@/lib/axios"
 import CustomerBookingCard from "@/components/customer-booking-card"
+import { useAuth } from "@/hooks/use-auth"
 interface Property {
   id: string
   name: string;
@@ -90,6 +91,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
   const setCustomer = useCustomerStore((state) => state.setCustomer)
   const [currentBusinessType, setCurrentBusinessType] = useState(typeBusiness)
   const { isConnected, isLoading, connectionError, retryCount, maxRetries, onSelectBooking } = useRealtimeBooking()
+  const { isLoading: isLoadingUser } = useAuth()
   const customerData = useCustomerStore((state) => state.customer); // ใช้ zustand อ่านข้อมูลลูกค้า
   const [activeTab, setActiveTab] = useState("monthly")
   const [selectedMonth, setSelectedMonth] = useState(() => (new Date().getMonth() + 1).toString()) // เดือนปัจจุบัน
@@ -284,8 +286,6 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
       setZoneList([])
     }
   }
-
-  console.log(canvasBackgroundImage)
 
   const getUnitBookingDate = async (filter: { day?: number; month?: number; year?: number }) => {
     const unitBookingDateData = await getUnitBookingDateApi({ 
@@ -1201,7 +1201,7 @@ export default function PropertyLayout({ typeBusiness, projectId }: PropertyLayo
 
   return (
     <ConnectionGuard
-      isLoading={isLoading}
+      isLoading={isLoading || isLoadingUser}
       isConnected={isConnected}
       connectionError={connectionError}
       retryCount={retryCount}
